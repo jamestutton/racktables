@@ -85,12 +85,12 @@ function renderNewSLBItemForm ($realm1, $realm2)
 				break;
 			case 'ipv4vs':
 				$name = 'Virtual service';
-				$list = getIPv4VSOptions();
+				$list = formatEntityList (listCells ('ipv4vs'));
 				$options = array ('name' => 'vs_id', 'tabindex' => 101);
 				break;
 			case 'ipv4rspool':
 				$name = 'RS pool';
-				$list = getIPv4RSPoolOptions();
+				$list = formatEntityList (listCells ('ipv4rspool'));
 				$options = array ('name' => 'pool_id', 'tabindex' => 102);
 				break;
 			default:
@@ -195,7 +195,7 @@ function renderSLBTripletsEdit ($cell)
 {
 	list ($realm1, $realm2) = array_values (array_diff (array ('object', 'ipv4vs', 'ipv4rspool'), array ($cell['realm'])));
 	if (getConfigVar ('ADDNEW_AT_TOP') == 'yes')
-		renderNewSLBItemForm($realm1, $realm2);
+		callHook ('renderNewSLBItemForm', $realm1, $realm2);
 
 	$triplets = SLBTriplet::getTriplets ($cell);
 	if (count ($triplets))
@@ -243,7 +243,7 @@ function renderSLBTripletsEdit ($cell)
 	}
 
 	if (getConfigVar ('ADDNEW_AT_TOP') != 'yes')
-		renderNewSLBItemForm ($realm1, $realm2);
+		callHook ('renderNewSLBItemForm', $realm1, $realm2);
 }
 
 function renderLBList ()
@@ -374,7 +374,7 @@ function renderRSPoolServerForm ($pool_id)
 		echo "<td><textarea name=rsconfig></textarea></td><td>";
 		printImageHREF ('ADD', 'Add new real server', TRUE);
 		echo "</td></tr></form>\n";
-		
+
 		$order = 'even';
 		foreach (getRSListInPool ($pool_id) as $rsid => $rs)
 		{

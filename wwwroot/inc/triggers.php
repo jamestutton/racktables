@@ -68,22 +68,6 @@ function checkTypeAndAttribute ($object_id, $type_id, $attr_id, $values, $hit = 
 	return '';
 }
 
-// This trigger filters out everything except switches with known-good
-// software.
-function trigger_livevlans ()
-{
-	return checkTypeAndAttribute
-	(
-		getBypassValue(),
-		8, // network switch
-		4, // SW type
-		// Cisco IOS 12.0
-		// Cisco IOS 12.1
-		// Cisco IOS 12.2
-		array (244, 251, 252)
-	);
-}
-
 // This trigger is on when any of the (get_mac_list, get_link_status) ops permitted
 function trigger_liveports ()
 {
@@ -197,7 +181,7 @@ function trigger_rackspace ()
 function trigger_ports ()
 {
 	// Hide the tab if the object type exists in the exclusion config option
-	if (considerConfiguredConstraint (spotEntity ('object', getBypassValue()), 'PORT_EXCLUSION_LISTSRC')) 
+	if (considerConfiguredConstraint (spotEntity ('object', getBypassValue()), 'PORT_EXCLUSION_LISTSRC'))
 		return '';
 
 	return 'std';
@@ -332,6 +316,20 @@ function triggerCactiGraphs ()
 	(
 		count (getCactiGraphsForObject (getBypassValue())) or
 		considerConfiguredConstraint (spotEntity ('object', getBypassValue()), 'CACTI_LISTSRC')
+	)
+		return 'std';
+	else
+		return '';
+}
+
+function triggerMuninGraphs()
+{
+	if (! count (getMuninServers()))
+		return '';
+	if
+	(
+		count (getMuninGraphsForObject (getBypassValue())) or
+		considerConfiguredConstraint (spotEntity ('object', getBypassValue()), 'MUNIN_LISTSRC')
 	)
 		return 'std';
 	else

@@ -23,7 +23,7 @@ class SLBTriplet
 	public $slb;
 	public $display_cells;
 
-	function __construct ($lb_id, $vs_id, $rs_id, $db_row = NULL)
+	public function __construct ($lb_id, $vs_id, $rs_id, $db_row = NULL)
 	{
 		$this->lb = spotEntity ('object', $lb_id);
 		$this->vs = spotEntity ('ipv4vs', $vs_id);
@@ -45,7 +45,7 @@ class SLBTriplet
 		}
 	}
 
-	public static function getTriplets ($cell)
+	static public function getTriplets ($cell)
 	{
 		if (isset ($cell['ip_bin']) and isset ($cell['vslist']))
 			// cell is IPAddress
@@ -88,12 +88,12 @@ class SLBTriplet
 		return $ret;
 	}
 
-	private static function getTripletsByIP ($ip_bin)
+	static public function getTripletsByIP ($ip_bin)
 	{
 		$ret = array();
 		$result = usePreparedSelectBlade ("
-SELECT DISTINCT IPv4LB.* 
-FROM 
+SELECT DISTINCT IPv4LB.*
+FROM
 	IPv4LB INNER JOIN IPv4VS ON IPv4VS.id = IPv4LB.vs_id
 	LEFT JOIN IPv4RS USING (rspool_id)
 WHERE
@@ -114,15 +114,19 @@ ORDER BY
 		return $ret;
 	}
 
-	protected function createParser()
+	// this method is here to allow using of custom MacroParser implementation
+	// override this function in the ancestor of SLBTriplet and return an instance 
+	// of your custom parser (probably ancested of MacroParser)
+	protected function createParser ($triplet)
 	{
 		return new MacroParser();
 	}
 
-	function generateConfig()
+	// creates parser and fills it with pre-defined macros
+	public function prepareParser()
 	{
 		// fill the predefined macros
-		$parser = $this->createParser();
+		$parser = $this->createParser ($this);
 		$parser->addMacro ('LB_ID', $this->lb['id']);
 		$parser->addMacro ('LB_NAME', $this->lb['name']);
 		$parser->addMacro ('VS_ID', $this->vs['id']);
@@ -153,6 +157,30 @@ ORDER BY
 		$parser->addMacro ('VS_VS_CONF', dos2unix ($this->vs['vsconfig']));
 		$parser->addMacro ('SLB_VS_CONF', dos2unix ($this->slb['vsconfig']));
 
+		return $parser;
+	}
+
+	// fills the existing parser with RS-specific pre-defined macros.
+	// $parser is the result of prepareParser, $rs_row - an item of getRSListInPool() result
+	public function prepareParserForRS (&$parser, $rs_row)
+	{
+		$parser->addMacro ('RS_HEADER',  ($this->vs['proto'] == 'MARK' ? '%RSIP%' : '%RSIP% %RSPORT%'));
+		$parser->addMacro ('RSIP', $rs_row['rsip']);
+		$parser->addMacro ('RSPORT', isset ($rs_row['rsport']) ? $rs_row['rsport'] : $this->vs['vport']); // VS port is a default value for RS port
+		$parser->addMacro ('RS_COMMENT', $rs_row['comment']);
+
+		$defaults = getSLBDefaults (TRUE);
+		$parser->addMacro ('GLOBAL_RS_CONF', dos2unix ($defaults['rs']));
+		$parser->addMacro ('VS_RS_CONF', dos2unix ($this->vs['rsconfig']));
+		$parser->addMacro ('RSP_RS_CONF', dos2unix ($this->rs['rsconfig']));
+		$parser->addMacro ('SLB_RS_CONF', dos2unix ($this->slb['rsconfig']));
+		$parser->addMacro ('RS_RS_CONF', $rs_row['rsconfig']);
+	}
+
+	public function generateConfig()
+	{
+		$parser = $this->prepareParser();
+
 		// return the expanded VS template using prepared $macros array
 		$ret = $parser->expand ("
 # LB (id == %LB_ID%): %LB_NAME%
@@ -173,18 +201,22 @@ virtual_server %VS_HEADER% {
 			if ($rs['inservice'] != 'yes')
 				continue;
 			$parser->pushdefs(); // backup macros
-			$parser->addMacro ('RS_HEADER',  ($this->vs['proto'] == 'MARK' ? '%RSIP%' : '%RSIP% %RSPORT%'));
-			$parser->addMacro ('RSIP', $rs['rsip']);
-			$parser->addMacro ('RSPORT', isset ($rs['rsport']) ? $rs['rsport'] : $this->vs['vport']); // VS port is a default value for RS port
-			$parser->addMacro ('RS_COMMENT', $rs['comment']);
+			$this->prepareParserForRS ($parser, $rs);
+			foreach (explode (',', $parser->expandMacro ('RSPORT')) as $rsp_token)
+			{
+				$port_range = explode ('-', $rsp_token);
+				if (count ($port_range) < 1)
+					throw new InvalidArgException ('RSPORT', $rsp_token, "invalid RS port range");
+				if (count ($port_range) < 2)
+					$port_range[] = $port_range[0];
+				if ($port_range[0] > $port_range[1])
+					throw new InvalidArgException ('RSPORT', $rsp_token, "invalid RS port range");
 
-			$parser->addMacro ('GLOBAL_RS_CONF', dos2unix ($defaults['rs']));
-			$parser->addMacro ('VS_RS_CONF', dos2unix ($this->vs['rsconfig']));
-			$parser->addMacro ('RSP_RS_CONF', dos2unix ($this->rs['rsconfig']));
-			$parser->addMacro ('SLB_RS_CONF', dos2unix ($this->slb['rsconfig']));
-			$parser->addMacro ('RS_RS_CONF', $rs['rsconfig']);
-
-			$ret .= $parser->expand ("
+				for ($rsport = $port_range[0]; $rsport <= $port_range[1]; $rsport++)
+				{
+					$parser->pushdefs();
+					$parser->addMacro ('RSPORT', $rsport);
+					$ret .= $parser->expand ("
 	%RS_PREPEND%
 	real_server %RS_HEADER% {
 		%GLOBAL_RS_CONF%
@@ -194,6 +226,9 @@ virtual_server %VS_HEADER% {
 		%RS_RS_CONF%
 	}
 ");
+					$parser->popdefs();
+				}
+			}
 			$parser->popdefs(); // restore original (VS-driven) macros
 		}
 		$ret .= "}\n";
@@ -207,19 +242,19 @@ class MacroParser
 	protected $stack; // macro contexts saved by pushdefs()
 	protected $trace; // recursive macro expansion path
 
-	function __construct()
+	public function __construct()
 	{
 		$this->macros = array();
 		$this->stack = array();
 		$this->trace = array();
 	}
 
-	function pushdefs()
+	public function pushdefs()
 	{
 		$this->stack[] = $this->macros;
 	}
 
-	function popdefs()
+	public function popdefs()
 	{
 		$this->macros = array_pop ($this->stack);
 	}
@@ -260,7 +295,7 @@ class MacroParser
 			{
 				for ($i = 0; $i < strlen ($line); $i++)
 				{
-					$c = $line[$i]; 
+					$c = $line[$i];
 					if ($c == "'" and 0 == --$macro_deep)
 					{
 						$this->addMacro ($mname, $mvalue);
@@ -350,22 +385,6 @@ function buildLVSConfig ($object_id)
 
 // *********************  Database functions  *********************
 
-function getIPv4VSOptions ()
-{
-	$ret = array();
-	foreach (listCells ('ipv4vs') as $vsid => $vsinfo)
-		$ret[$vsid] = $vsinfo['dname'] . (!strlen ($vsinfo['name']) ? '' : " (${vsinfo['name']})");
-	return $ret;
-}
-
-function getIPv4RSPoolOptions ()
-{
-	$ret = array();
-	foreach (listCells ('ipv4rspool') as $pool_id => $poolInfo)
-		$ret[$pool_id] = $poolInfo['name'];
-	return $ret;
-}
-
 function addRStoRSPool ($pool_id, $rsip_bin, $rsport = 0, $inservice = 'no', $rsconfig = '', $comment = '')
 {
 	return usePreparedInsertBlade
@@ -376,7 +395,7 @@ function addRStoRSPool ($pool_id, $rsip_bin, $rsport = 0, $inservice = 'no', $rs
 			'rspool_id' => $pool_id,
 			'rsip' => $rsip_bin,
 			'rsport' => (!strlen ($rsport) or $rsport === 0) ? NULL : $rsport,
-			'inservice' => $inservice == 'yes' ? 'yes' : 'no', 
+			'inservice' => $inservice == 'yes' ? 'yes' : 'no',
 			'rsconfig' => !strlen ($rsconfig) ? NULL : $rsconfig,
 			'comment' => !strlen ($comment) ? NULL : $comment,
 		)

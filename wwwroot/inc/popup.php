@@ -202,7 +202,7 @@ function findObjectParentCandidates ($object_id)
 	$object = spotEntity ('object', $object_id);
 	$args = array ($object['objtype_id'], $object_id, $object_id);
 
-	$query  = "SELECT O.id, O.name FROM Object O ";
+	$query  = "SELECT O.id, O.name, O.objtype_id FROM Object O ";
 	$query .= "LEFT JOIN ObjectParentCompat OPC ON O.objtype_id = OPC.parent_objtype_id ";
 	$query .= "WHERE OPC.child_objtype_id = ? ";
 	$query .= "AND O.id != ? ";
@@ -213,7 +213,7 @@ function findObjectParentCandidates ($object_id)
 		array_push($args, $object['objtype_id'], $object_id, $object_id);
 		$query .= "AND OPC.parent_objtype_id != 4 ";
 		$query .= "UNION ";
-		$query .= "SELECT O.id, O.name FROM Object O  ";
+		$query .= "SELECT O.id, O.name, O.objtype_id FROM Object O  ";
 		$query .= "LEFT JOIN ObjectParentCompat OPC ON O.objtype_id = OPC.parent_objtype_id ";
 		$query .= "LEFT JOIN AttributeValue AV ON O.id = AV.object_id ";
 		$query .= "WHERE OPC.child_objtype_id = ? ";
@@ -227,7 +227,7 @@ function findObjectParentCandidates ($object_id)
 	$result = usePreparedSelectBlade ($query, $args);
 	$ret = array();
 	while ($row = $result->fetch (PDO::FETCH_ASSOC))
-		$ret[$row['id']] = $row['name'];
+		$ret[$row['id']] = empty ($row['name']) ? sprintf("[%s] - object %d", decodeObjectType ($row['objtype_id'], 'o'), $row['id']) : $row['name'];
 	return $ret;
 }
 
@@ -409,9 +409,9 @@ function renderPopupPortSelector()
 		'linked' => $linked
 	);
 	if (isset ($_REQUEST['filter-obj']))
-		$filter['objects'] = $_REQUEST['filter-obj'];
+		$filter['objects'] = trim($_REQUEST['filter-obj']);
 	if (isset ($_REQUEST['filter-port']))
-		$filter['ports'] = $_REQUEST['filter-port'];
+		$filter['ports'] = trim($_REQUEST['filter-port']);
 	if ($in_rack)
 	{
 		$object = spotEntity ('object', $port_info['object_id']);

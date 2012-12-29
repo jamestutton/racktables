@@ -21,7 +21,6 @@ require_once 'database.php';
 require_once 'auth.php';
 require_once 'navigation.php';
 require_once 'triggers.php';
-require_once 'gateways.php';
 require_once 'remote.php';
 require_once 'caching.php';
 require_once 'slb.php';
@@ -122,7 +121,8 @@ elseif (! isset ($remote_username))
 	// Some functions require remote_username to be set to something to act correctly,
 	// even though they don't use the value itself.
 	$admin_account = spotEntity ('user', 1);
-	if (FALSE !== $env_user = getenv('USER'))
+	if (isset ($_SERVER['argc']) && FALSE !== $env_user = getenv('USER'))
+		// use USER env var if we are in CLI mode
 		$remote_username = $env_user;
 	else
 		$remote_username = $admin_account['user_name'];

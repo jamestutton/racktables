@@ -86,10 +86,9 @@ $location_obj_types = array
 $dqtitle = array
 (
 	'sync_aging' => 'Normal, aging',
-	'resync_aging' => 'Version conflict, aging',
+	'resync_aging' => 'Failed, aging',
 	'sync_ready' => 'Normal, ready for sync',
-	'resync_ready' => 'Version conflict, ready for retry',
-	'failed' => 'Failed',
+	'resync_ready' => 'Failed, ready for retry',
 	'disabled' => 'Sync disabled',
 	'done' => 'Up to date',
 );
@@ -351,6 +350,10 @@ function genericAssertion ($argname, $argtype)
 		if (! array_key_exists ($sic[$argname], $dqtitle))
 			throw new InvalidRequestArgException ($argname, $sic[$argname], 'Unknown value');
 		break;
+	case 'enum/yesno':
+		if (! in_array ($sic[$argname], array ('yes', 'no')))
+			throw new InvalidRequestArgException ($argname, $sic[$argname], 'Unknown value');
+		break;
 	case 'iif':
 		if (!array_key_exists ($sic[$argname], getPortIIFOptions()))
 			throw new InvalidRequestArgException ($argname, $sic[$argname], 'Unknown value');
@@ -428,6 +431,15 @@ function setDisplayedName (&$cell)
 			$cell['dname'] = $cell['name'];
 		else
 			$cell['dname'] = '[' . decodeObjectType ($cell['objtype_id'], 'o') . ']';
+		// If the object has a container, apply the same logic to the container name
+		$cell['container_dname'] = NULL;
+		if ($cell['container_id'])
+		{
+			if ($cell['container_name'] != '')
+				$cell['container_dname'] = $cell['container_name'];
+			else
+				$cell['container_dname'] = '[' . decodeObjectType ($cell['container_objtype_id'], 'o') . ']';
+		}
 	}
 	elseif ($cell['realm'] == 'ipv4vs')
 	{
@@ -1117,7 +1129,7 @@ function string_insert_hrefs ($s)
 		if (!$protocol && $password)
 		{
 			$html .= htmlspecialchars($username);
-				
+
 			// Continue text parsing at the ':' following the "username".
 			$position = $urlPosition + strlen($username);
 			continue;
@@ -1251,41 +1263,41 @@ function treeFromList (&$orig_nodelist, $threshold = 0, $return_main_payload = T
 
 	// index the tree items by their order in $orig_nodelist
 	$ti = 0;
-	foreach ($nodelist as &$node)
-		$node['__tree_index'] = $ti++;
+	foreach ($nodelist as &$node_ref)
+	{
+		$node_ref['__tree_index'] = $ti++;
+		$node_ref['kidc'] = 0;
+		$node_ref['kids'] = array();
+	}
 
 	// Array equivalent of traceEntity() function.
 	$trace = array();
-	// set kidc and kids only once
-	foreach (array_keys ($nodelist) as $nodeid)
-	{
-		$nodelist[$nodeid]['kidc'] = 0;
-		$nodelist[$nodeid]['kids'] = array();
-	}
 	do
 	{
 		$nextpass = FALSE;
 		foreach (array_keys ($nodelist) as $nodeid)
 		{
+			$node = $nodelist[$nodeid];
+			$parentid = $node['parent_id'];
 			// When adding a node to the working tree, book another
 			// iteration, because the new item could make a way for
 			// others onto the tree. Also remove any item added from
 			// the input list, so iteration base shrinks.
 			// First check if we can assign directly.
-			if ($nodelist[$nodeid]['parent_id'] == NULL)
+			if ($parentid == NULL)
 			{
-				$tree[$nodeid] = $nodelist[$nodeid];
+				$tree[$nodeid] = $node;
 				$trace[$nodeid] = array(); // Trace to root node is empty
 				unset ($nodelist[$nodeid]);
 				$nextpass = TRUE;
 			}
 			// Now look if it fits somewhere on already built tree.
-			elseif (isset ($trace[$nodelist[$nodeid]['parent_id']]))
+			elseif (isset ($trace[$parentid]))
 			{
 				// Trace to a node is a trace to its parent plus parent id.
-				$trace[$nodeid] = $trace[$nodelist[$nodeid]['parent_id']];
-				$trace[$nodeid][] = $nodelist[$nodeid]['parent_id'];
-				pokeNode ($tree, $trace[$nodeid], $nodeid, $nodelist[$nodeid], $threshold);
+				$trace[$nodeid] = $trace[$parentid];
+				$trace[$nodeid][] = $parentid;
+				pokeNode ($tree, $trace[$nodeid], $nodeid, $node, $threshold);
 				// path to any other node is made of all parent nodes plus the added node itself
 				unset ($nodelist[$nodeid]);
 				$nextpass = TRUE;
@@ -1474,6 +1486,12 @@ function fixContext ($target = NULL)
 		if ($target['realm'] != 'user')
 			$auto_tags = array_merge ($auto_tags, $target['atags']);
 	}
+	elseif ($pageno == 'ipaddress' && $net = spotNetworkByIP (ip_parse (getBypassValue())))
+	{
+		// IP addresses inherit context tags from their parent networks
+		$target_given_tags = $net['etags'];
+		$auto_tags = array_merge ($auto_tags, $net['atags']);
+	}
 	// Explicit and implicit chains should be normally empty at this point, so
 	// overwrite the contents anyway.
 	$expl_tags = mergeTagChains ($user_given_tags, $target_given_tags);
@@ -1588,7 +1606,7 @@ function getShrinkedTagTree($entity_list, $realm, $preselect) {
 	global $tagtree;
 	if ($preselect['andor'] != 'and' || empty($entity_list) && $preselect['is_empty'])
 		return getObjectiveTagTree($tagtree, $realm, $preselect['tagidlist']);
-	
+
 	$used_tags = array(); //associative, keys - tag ids, values - taginfos
 	foreach ($entity_list as $entity)
 	{
@@ -1597,12 +1615,12 @@ function getShrinkedTagTree($entity_list, $realm, $preselect) {
 				$used_tags[$etag['id']] = 1;
 			else
 				$used_tags[$etag['id']]++;
-	
+
 		foreach ($entity['itags'] as $itag)
 			if (! array_key_exists($itag['id'], $used_tags))
 				$used_tags[$itag['id']] = 0;
 	}
-	
+
 	$shrinked_tree = shrinkSubtree($tagtree, $used_tags, $preselect, $realm);
 	return getObjectiveTagTree($shrinked_tree, $realm, $preselect['tagidlist']);
 }
@@ -1610,13 +1628,13 @@ function getShrinkedTagTree($entity_list, $realm, $preselect) {
 // deletes item from tag subtree unless it exists in $used_tags and not preselected
 function shrinkSubtree($tree, $used_tags, $preselect, $realm) {
 	$self = __FUNCTION__;
-	
+
 	foreach($tree as $i => &$item) {
 		$item['kids'] = $self($item['kids'], $used_tags, $preselect, $realm);
 		$item['kidc'] = count($item['kids']);
 		if
 		(
-			! array_key_exists($item['id'], $used_tags) && 
+			! array_key_exists($item['id'], $used_tags) &&
 			! in_array($item['id'], $preselect['tagidlist']) &&
 			! $item['kidc']
 		)
@@ -1949,6 +1967,12 @@ function IPNetContains ($netA, $netB)
 	return (-2 == IPNetworkCmp ($netA, $netB));
 }
 
+function IPNetsIntersect ($netA, $netB)
+{
+	return ($netA['ip_bin'] & $netB['mask_bin']) === $netB['ip_bin'] ||
+		($netB['ip_bin'] & $netA['mask_bin']) === $netA['ip_bin'];
+}
+
 function ip_in_range ($ip_bin, $range)
 {
 	return ($ip_bin & $range['mask_bin']) === $range['ip_bin'];
@@ -2219,8 +2243,10 @@ function ip4_bin2int ($ip_bin)
 {
 	if (4 != strlen ($ip_bin))
 		throw new InvalidArgException ('ip_bin', $ip_bin, "Invalid binary IP");
-	$list = unpack ('N', $ip_bin);
-	return array_shift ($list);
+	$ret = array_first (unpack ('N', $ip_bin));
+	if (PHP_INT_SIZE > 4 && $ret < 0)
+		$ret = $ret & 0xffffffff;
+	return $ret;
 }
 
 // Use this function only when you need to export binary ip out of PHP running context (e.g., DB)
@@ -2396,7 +2422,6 @@ function nodeIsCollapsed ($node)
 
 // sets 'addrlist', 'own_addrlist', 'addrc', 'own_addrc' keys of $node
 // 'addrc' and 'own_addrc' are sizes of 'addrlist' and 'own_addrlist', respectively
-// 'own_addrlist' is empty if the node network has no children
 function loadIPAddrList (&$node)
 {
 	$node['addrlist'] = scanIPSpace (array (array ('first' => $node['ip_bin'], 'last' => ip_last ($node))));
@@ -2606,7 +2631,7 @@ function formatFileSize ($bytes) {
 	// kilobytes
 	if ($bytes < 1024000)
 		return sprintf ("%.1fk", round (($bytes / 1024), 1));
-	
+
 	// megabytes
 	return sprintf ("%.1f MB", round (($bytes / 1024000), 1));
 }
@@ -2615,7 +2640,7 @@ function formatFileSize ($bytes) {
 function convertToBytes ($value) {
 	$value = trim($value);
 	$last = strtolower($value[strlen($value)-1]);
-	switch ($last) 
+	switch ($last)
 	{
 		case 'g':
 			$value *= 1024;
@@ -2701,21 +2726,16 @@ function makeHrefForHelper ($helper_name, $params = array())
 function cookOptgroups ($recordList, $object_type_id = 0, $existing_value = 0)
 {
 	$ret = array();
-	// Always keep "other" OPTGROUP at the SELECT bottom.
 	$therest = array();
 	foreach ($recordList as $dict_key => $dict_value)
-		if (strpos ($dict_value, '%GSKIP%') !== FALSE)
-		{
-			$tmp = explode ('%GSKIP%', $dict_value, 2);
-			$ret[$tmp[0]][$dict_key] = $tmp[1];
-		}
-		elseif (strpos ($dict_value, '%GPASS%') !== FALSE)
-		{
-			$tmp = explode ('%GPASS%', $dict_value, 2);
-			$ret[$tmp[0]][$dict_key] = $tmp[1];
-		}
+		if (preg_match ('/^(.*)%(GPASS|GSKIP)%/', $dict_value, $m))
+			$ret[$m[1]][$dict_key] = execGMarker ($dict_value);
 		else
 			$therest[$dict_key] = $dict_value;
+
+	// Always keep "other" OPTGROUP at the SELECT bottom.
+	$ret['other'] = $therest;
+
 	if ($object_type_id != 0)
 	{
 		$screenlist = array();
@@ -2738,7 +2758,6 @@ function cookOptgroups ($recordList, $object_type_id = 0, $existing_value = 0)
 					unset ($ret[$vendor]);
 			}
 	}
-	$ret['other'] = $therest;
 	return $ret;
 }
 
@@ -2938,15 +2957,15 @@ function getVSTOptions()
 	return $ret;
 }
 
-# Return a 2-dimensional array in the format understood by getNiftySelect(),
-# which would contain all VLANs of all VLAN domains except domains, which IDs
-# are present in $except_domains argument.
-function getAllVLANOptions ($except_domains = array())
+# Return an array in the format understood by getNiftySelect() and getOptionTree(),
+# so that the options stand for all VLANs grouped by respective VLAN domains, except
+# those listed on the "except" array.
+function getAllVLANOptions ($except = array())
 {
 	$ret = array();
 	foreach (getVLANDomainStats() as $domain)
-		if (! in_array ($domain['id'], $except_domains))
-			foreach (getDomainVLANs ($domain['id']) as $vlan)
+		foreach (getDomainVLANs ($domain['id']) as $vlan)
+			if (! array_key_exists ($domain['id'], $except) or ! in_array ($vlan['vlan_id'], $except[$domain['id']]))
 				$ret[$domain['description']]["${domain['id']}-${vlan['vlan_id']}"] =
 					"${vlan['vlan_id']} (${vlan['netc']}) ${vlan['vlan_descr']}";
 	return $ret;
@@ -3139,38 +3158,42 @@ function decodeVLANCK ($string)
 
 // Return VLAN name formatted for HTML output (note, that input
 // argument comes from database unescaped).
-function formatVLANName ($vlaninfo, $context = 'markup long')
+function formatVLANAsOption ($vlaninfo)
 {
-	switch ($context)
-	{
-	case 'option':
-		$ret = $vlaninfo['vlan_id'];
-		if ($vlaninfo['vlan_descr'] != '')
-			$ret .= ' ' . niftyString ($vlaninfo['vlan_descr']);
-		return $ret;
-	case 'label':
-		$ret = $vlaninfo['vlan_id'];
-		if ($vlaninfo['vlan_descr'] != '')
-			$ret .= ' <i>(' . niftyString ($vlaninfo['vlan_descr']) . ')</i>';
-		return $ret;
-	case 'plain long':
-		$ret = 'VLAN' . $vlaninfo['vlan_id'];
-		if ($vlaninfo['vlan_descr'] != '')
-			$ret .= ' (' . niftyString ($vlaninfo['vlan_descr'], 20, FALSE) . ')';
-		return $ret;
-	case 'hyperlink':
-		$ret = '<a href="';
-		$ret .= makeHref (array ('page' => 'vlan', 'vlan_ck' => $vlaninfo['domain_id'] . '-' . $vlaninfo['vlan_id']));
-		$ret .= '">' . formatVLANName ($vlaninfo, 'markup long') . '</a>';
-		return $ret;
-	case 'markup long':
-	default:
-		$ret = 'VLAN' . $vlaninfo['vlan_id'];
-		$ret .= ' @' . niftyString ($vlaninfo['domain_descr']);
-		if ($vlaninfo['vlan_descr'] != '')
-			$ret .= ' <i>(' . niftyString ($vlaninfo['vlan_descr']) . ')</i>';
-		return $ret;
-	}
+	$ret = $vlaninfo['vlan_id'];
+	if ($vlaninfo['vlan_descr'] != '')
+		$ret .= ' ' . niftyString ($vlaninfo['vlan_descr']);
+	return $ret;
+}
+
+function formatVLANAsLabel ($vlaninfo)
+{
+	$ret = $vlaninfo['vlan_id'];
+	if ($vlaninfo['vlan_descr'] != '')
+		$ret .= ' <i>(' . niftyString ($vlaninfo['vlan_descr']) . ')</i>';
+	return $ret;
+}
+
+function formatVLANAsPlainText ($vlaninfo)
+{
+	$ret = 'VLAN' . $vlaninfo['vlan_id'];
+	if ($vlaninfo['vlan_descr'] != '')
+		$ret .= ' (' . niftyString ($vlaninfo['vlan_descr'], 20, FALSE) . ')';
+	return $ret;
+}
+
+function formatVLANAsHyperlink ($vlaninfo)
+{
+	return mkA (formatVLANAsRichText ($vlaninfo), 'vlan', $vlaninfo['domain_id'] . '-' . $vlaninfo['vlan_id']);
+}
+
+function formatVLANAsRichText ($vlaninfo)
+{
+	$ret = 'VLAN' . $vlaninfo['vlan_id'];
+	$ret .= ' @' . niftyString ($vlaninfo['domain_descr']);
+	if ($vlaninfo['vlan_descr'] != '')
+		$ret .= ' <i>(' . niftyString ($vlaninfo['vlan_descr']) . ')</i>';
+	return $ret;
 }
 
 // map interface name
@@ -3188,6 +3211,7 @@ function ios12ShortenIfName ($ifname)
 	$ifname = preg_replace ('@^Management(.+)$@', 'ma\\1', $ifname);
 	$ifname = preg_replace ('@^Et(\d.*)$@', 'e\\1', $ifname);
 	$ifname = strtolower ($ifname);
+	$ifname = preg_replace ('/^(e|fa|gi|te|po|xg|lo|ma)\s+(\d.*)/', '$1$2', $ifname);
 	return $ifname;
 }
 
@@ -3243,6 +3267,23 @@ function reindexById ($input, $column_name = 'id')
 			throw new InvalidArgException ('column_name', $column_name, 'duplicate ID value ' . $item[$column_name]);
 		$ret[$item[$column_name]] = $item;
 	}
+	return $ret;
+}
+
+# Given an array consisting of subarrays, each typically with the same set
+# of keys, produce a result indexed the same way as the input array, but
+# having each subarray replaced with one of the subarray values (using the
+# provided subindex name, e.g.:
+# array (10 => array ('a' => 'x1', 'b' => 'y1'), 20 => array ('a' => 'x2', 'b' => 'y2'))
+# would map to (using subindex 'b'): array (10 => 'y1', 20 => 'y2')
+function reduceSubarraysToColumn ($input, $column)
+{
+	$ret = array();
+	foreach ($input as $key => $item)
+		if (array_key_exists ($column, $item))
+			$ret[$key] = $item[$column];
+		else
+			throw new InvalidArgException ('input', '(array)', "column '${column}' is not set for subarray at index '${key}'");
 	return $ret;
 }
 
@@ -3356,6 +3397,8 @@ function generate8021QDeployOps ($vswitch, $device_vlanlist, $before, $changes)
 			$domain_vlanlist[$vlan_id]['vlan_type'] != 'alien'
 		)
 			$old_managed_vlans[] = $vlan_id;
+	$old_managed_vlans = array_unique ($old_managed_vlans);
+
 	$ports_to_do = array();
 	$ports_to_do_queue1 = array();
 	$ports_to_do_queue2 = array();
@@ -3373,7 +3416,7 @@ function generate8021QDeployOps ($vswitch, $device_vlanlist, $before, $changes)
 		);
 		// put the ports with employed vlans first, the others - below them
 		if (! count (array_intersect ($changeset['old_allowed'], $employed_vlans)))
-			$ports_to_do_queue2[$port_name] = $changeset; 
+			$ports_to_do_queue2[$port_name] = $changeset;
 		else
 			$ports_to_do_queue1[$port_name] = $changeset;
 		$after[$port_name] = $port;
@@ -3397,7 +3440,7 @@ function generate8021QDeployOps ($vswitch, $device_vlanlist, $before, $changes)
 	// This array tracks port count:
 	//  * keys are vlan_id's;
 	//  * values are the number of changed ports which were using this vlan in old configuration
-	$used_vlans = array(); 
+	$used_vlans = array();
 	// 1
 	foreach ($domain_vlanlist as $vlan_id => $vlan)
 		if ($vlan['vlan_type'] == 'compulsory')
@@ -3435,6 +3478,7 @@ function generate8021QDeployOps ($vswitch, $device_vlanlist, $before, $changes)
 				!in_array ($vlan_id, $new_managed_vlans)
 			)
 				$new_managed_vlans[] = $vlan_id;
+	$new_managed_vlans = array_unique ($new_managed_vlans);
 
 	$vlans_to_add = array_diff ($new_managed_vlans, $old_managed_vlans);
 	$vlans_to_del = array_diff ($old_managed_vlans, $new_managed_vlans);
@@ -3449,7 +3493,7 @@ function generate8021QDeployOps ($vswitch, $device_vlanlist, $before, $changes)
 			'arg1' => $vlan_id,
 		);
 	$vlans_to_del = array_diff ($vlans_to_del, $deleted_vlans);
-	
+
 	foreach (sortPortList ($ports_to_do) as $port_name => $port)
 	{
 		// Before removing each old VLAN as such it is necessary to unassign
@@ -4002,7 +4046,7 @@ function exec8021QDeploy ($object_id, $do_push)
 			array (E_8021Q_PULL_REMOTE_ERROR, $vswitch['object_id'])
 		);
 		$dbxlink->commit();
-		return 0;
+		throw $e;
 	}
 	$conflict = FALSE;
 	$ok_to_push = array();
@@ -4089,7 +4133,9 @@ function exec8021QDeploy ($object_id, $do_push)
 			);
 			try
 			{
-				$vlan_names = isset ($R['vlannames']) ? $R['vlannames'] : array();
+				$vlan_names = array();
+				foreach ($R['vlanlist'] as $vid)
+					$vlan_names[$vid] = @$R['vlannames']['vid'];
 				$npushed += exportSwitch8021QConfig ($vswitch, $R['vlanlist'], $R['portdata'], $ok_to_push, $vlan_names);
 				// update cache for ports deployed
 				replace8021QPorts ('cached', $vswitch['object_id'], $R['portdata'], $ok_to_push);
@@ -4115,7 +4161,7 @@ function exec8021QDeploy ($object_id, $do_push)
 	// TODO: only process changed uplink ports
 	if ($nsaved_uplinks)
 		initiateUplinksReverb ($vswitch['object_id'], $new_uplinks);
-	return $nsaved + $npushed + $nsaved_uplinks;
+	return $conflict ? FALSE : $nsaved + $npushed + $nsaved_uplinks;
 }
 
 function strerror8021Q ($errno)
@@ -4205,15 +4251,19 @@ function initiateUplinksReverb ($object_id, $uplink_ports)
 	// task list (with its actual remote port name, of course).
 	$done = 0;
 	foreach ($upstream_config as $remote_object_id => $remote_ports)
-		$done += saveDownlinksReverb ($remote_object_id, $remote_ports);
+		if ($changed = saveDownlinksReverb ($remote_object_id, $remote_ports))
+		{
+			$done += $changed;
+			$done += apply8021qChangeRequest ($remote_object_id, array(), FALSE);
+		}
 	return $done;
 }
 
 // checks if the desired config of all uplink/downlink ports of that switch, and
-// his neighbors, equals to the recalculated config. If not, and $check_only is FALSE,
+// his neighbors, equals to the recalculated config. If not,
 // sets the recalculated configs as desired and puts switches into out-of-sync state.
 // Returns an array with object_id as key and portname subkey
-function recalc8021QPorts ($switch_id, $check_only = FALSE)
+function recalc8021QPorts ($switch_id)
 {
 	function find_connected_portinfo ($ports, $name)
 	{
@@ -4266,8 +4316,9 @@ function recalc8021QPorts ($switch_id, $check_only = FALSE)
 				$local_port_order = $new_order[$pn]; // this updates $order
 
 				// queue changes in D-config of remote switch
-				if ($changed = queueChangesToSwitch ($portinfo['remote_object_id'], array ($remote_pn => $remote_port_order), $remote_before, $check_only))
+				if ($changed = replace8021QPorts ('desired', $portinfo['remote_object_id'], $remote_before, array ($remote_pn => $remote_port_order)))
 				{
+					touchVLANSwitch ($portinfo['remote_object_id']);
 					$ret['switches'] ++;
 					$ret['ports'] += $changed;
 				}
@@ -4279,8 +4330,9 @@ function recalc8021QPorts ($switch_id, $check_only = FALSE)
 	foreach (filter8021QChangeRequests ($domain_vlanlist, $before, produceUplinkPorts ($domain_vlanlist, $order, $vswitch['object_id'])) as $pn => $portorder)
 		$order[$pn] = $portorder;
 	// queue changes in D-config of local switch
-	if ($changed = queueChangesToSwitch ($switch_id, $order, $before, $check_only))
+	if ($changed = replace8021QPorts ('desired', $switch_id, $before, $order))
 	{
+		touchVLANSwitch ($portinfo['remote_object_id']);
 		$ret['switches'] ++;
 		$ret['ports'] += $changed;
 	}
@@ -4306,8 +4358,9 @@ function recalc8021QPorts ($switch_id, $check_only = FALSE)
 			{
 				$new_order = produceDownlinkPort ($remote_domain_vlanlist, $remote_pn, $remote_order, $local_port_order);
 				// queue changes in D-config of remote switch
-				if ($changed = queueChangesToSwitch ($portinfo['remote_object_id'], $new_order, $remote_before, $check_only))
+				if ($changed = replace8021QPorts ('desired', $portinfo['remote_object_id'], $remote_before, $new_order))
 				{
+					touchVLANSwitch ($portinfo['remote_object_id']);
 					$ret['switches'] ++;
 					$ret['ports'] += $changed;
 				}
@@ -4330,37 +4383,9 @@ function produceDownlinkPort ($domain_vlanlist, $portname, $order, $uplink_order
 	foreach ($uplink_order['allowed'] as $vlan_id)
 	{
 		if (matchVLANFilter ($vlan_id, $new_order[$portname]['wrt_vlans']))
-		$new_order[$portname]['allowed'][] = $vlan_id;	
+		$new_order[$portname]['allowed'][] = $vlan_id;
 	}
 	return filter8021QChangeRequests ($domain_vlanlist, $order, $new_order);
-}
-
-// does upd8021QPort on any port from $order array which is not equal to the corresponding $before port.
-// returns changed port count.
-// If $check_only is TRUE, return port count that could be changed unless $check_only, does nothing to DB.
-function queueChangesToSwitch ($switch_id, $order, $before, $check_only = FALSE)
-{
-	global $script_mode;
-	$ret = array();
-	$nsaved = 0;
-	foreach ($order as $portname => $portorder)
-		if (! same8021QConfigs ($portorder, $before[$portname]))
-		{
-			if ($script_mode)
-			{
-				$object = spotEntity ('object', $switch_id);
-				print $object['name'] . " $portname: " . serializeVLANPack ($before[$portname]) . ' -> ' . serializeVLANPack ($portorder) . "\n";
-			}
-			if (! $check_only)
-			{
-				upd8021QPort ('desired', $switch_id, $portname, $portorder);
-				$nsaved++;
-			}
-		}
-	
-	if (! $check_only && $nsaved)
-		touchVLANSwitch ($switch_id);
-	return $nsaved;
 }
 
 function detectVLANSwitchQueue ($vswitch)
@@ -4377,13 +4402,12 @@ function detectVLANSwitchQueue ($vswitch)
 		else
 			return 'sync_ready';
 	case E_8021Q_VERSION_CONFLICT:
+	case E_8021Q_PULL_REMOTE_ERROR:
+	case E_8021Q_PUSH_REMOTE_ERROR:
 		if ($vswitch['last_error_age_seconds'] < getConfigVar ('8021Q_DEPLOY_RETRY'))
 			return 'resync_aging';
 		else
 			return 'resync_ready';
-	case E_8021Q_PULL_REMOTE_ERROR:
-	case E_8021Q_PUSH_REMOTE_ERROR:
-		return 'failed';
 	case E_8021Q_SYNC_DISABLED:
 		return 'sync_ready';
 	}
@@ -4474,13 +4498,13 @@ function formatPortLink($host_id, $hostname, $port_id, $portname, $a_class = '')
 	}
 	if (! empty($a_class))
 		$additional .= (empty($additional) ? '' : ' '). "class='$a_class'";
-	
+
 	$text_items = array();
 	if (isset ($hostname))
 		$text_items[] = $hostname;
 	if (isset ($portname))
 		$text_items[] = $portname;
-		
+
 	return "<a $additional href=\"$href\">" . implode(' ', $text_items) . '</a>';
 }
 
@@ -4647,31 +4671,55 @@ function searchEntitiesByText ($terms)
 {
 	$summary = array();
 
-	if (preg_match (RE_IP4_ADDR, $terms))
+	if (FALSE !== ($ip_bin = ip4_checkparse ($terms)))
 	// Search for IPv4 address.
 	{
-		if ($net_id = getIPv4AddressNetworkId (ip4_parse ($terms)))
-			$summary['ipv4addressbydq'][$terms] = array ('net_id' => $net_id, 'ip' => $terms);
-		
+		if ($net_id = getIPv4AddressNetworkId ($ip_bin))
+			$summary['ipv4addressbydq'][$ip_bin] = array ('net_id' => $net_id, 'ip' => $ip_bin);
 	}
 	elseif (FALSE !== ($ip_bin = ip6_checkparse ($terms)))
 	// Search for IPv6 address
 	{
 		if ($net_id = getIPv6AddressNetworkId ($ip_bin))
-			$summary['ipv6addressbydq'][$net_id] = array ('net_id' => $net_id, 'ip' => $ip_bin);
+			$summary['ipv6addressbydq'][$ip_bin] = array ('net_id' => $net_id, 'ip' => $ip_bin);
 	}
 	elseif (preg_match (RE_IP4_NET, $terms))
 	// Search for IPv4 network
 	{
 		list ($base, $len) = explode ('/', $terms);
 		if (NULL !== ($net_id = getIPv4AddressNetworkId (ip4_parse ($base), $len + 1)))
-			$summary['ipv4network'][$net_id] = spotEntity('ipv4net', $net_id);
+			$summary['ipv4net'][$net_id] = spotEntity('ipv4net', $net_id);
 	}
 	elseif (preg_match ('@(.*)/(\d+)$@', $terms, $matches) && FALSE !== ($ip_bin = ip6_checkparse ($matches[1])))
 	// Search for IPv6 network
 	{
 		if (NULL !== ($net_id = getIPv6AddressNetworkId ($ip_bin, $matches[2] + 1)))
-			$summary['ipv6network'][$net_id] = spotEntity('ipv6net', $net_id);
+			$summary['ipv6net'][$net_id] = spotEntity('ipv6net', $net_id);
+	}
+	elseif (preg_match ('/^vlan\s*(\d+)$/i', $terms, $matches))
+	{
+		$byID = getSearchResultByField
+		(
+			'VLANDescription',
+			array ('domain_id', 'vlan_id'),
+			'vlan_id',
+			$matches[1],
+			'domain_id',
+			1
+		);
+		foreach ($byID as $vlan)
+		{
+			// add vlans to results
+			$vlan_ck = $vlan['domain_id'] . '-' . $vlan['vlan_id'];
+			$vlan['id'] = $vlan_ck;
+			$summary['vlan'][$vlan_ck] = $vlan;
+			// add linked networks to results
+			$vlan_info = getVLANInfo ($vlan_ck);
+			foreach ($vlan_info['ipv4nets'] as $net_id)
+				$summary['ipv4net'][$net_id] = spotEntity ("ipv4net", $net_id);
+			foreach ($vlan_info['ipv6nets'] as $net_id)
+				$summary['ipv6net'][$net_id] = spotEntity ("ipv6net", $net_id);
+		}
 	}
 	else
 	// Search for objects, addresses, networks, virtual services and RS pools by their description.
@@ -4706,8 +4754,8 @@ function searchEntitiesByText ($terms)
 			$summary['object'] = getObjectSearchResults ($terms);
 			$summary['ipv4addressbydescr'] = getIPv4AddressSearchResult ($terms);
 			$summary['ipv6addressbydescr'] = getIPv6AddressSearchResult ($terms);
-			$summary['ipv4network'] = getIPv4PrefixSearchResult ($terms);
-			$summary['ipv6network'] = getIPv6PrefixSearchResult ($terms);
+			$summary['ipv4net'] = getIPv4PrefixSearchResult ($terms);
+			$summary['ipv6net'] = getIPv6PrefixSearchResult ($terms);
 			$summary['ipv4rspool'] = getIPv4RSPoolSearchResult ($terms);
 			$summary['ipv4vs'] = getIPv4VServiceSearchResult ($terms);
 			$summary['user'] = getAccountSearchResult ($terms);
@@ -4718,28 +4766,60 @@ function searchEntitiesByText ($terms)
 	}
 	# Filter search results in a way in some realms to omit records, which the
 	# user would not be able to browse anyway.
-	if (isset ($summary['object']))
-		foreach ($summary['object'] as $key => $record)
-			if (! isolatedPermission ('object', 'default', spotEntity ('object', $record['id'])))
-				unset ($summary['object'][$key]);
-	if (isset ($summary['ipv4network']))
-		foreach ($summary['ipv4network'] as $key => $netinfo)
-			if (! isolatedPermission ('ipv4net', 'default', $netinfo))
-				unset ($summary['ipv4network'][$key]);
-	if (isset ($summary['ipv6network']))
-		foreach ($summary['ipv6network'] as $key => $netinfo)
-			if (! isolatedPermission ('ipv6net', 'default', $netinfo))
-				unset ($summary['ipv6network'][$key]);
-	if (isset ($summary['file']))
-		foreach ($summary['file'] as $key => $fileinfo)
-			if (! isolatedPermission ('file', 'default', $fileinfo))
-				unset ($summary['file'][$key]);
-
+	foreach (array ('object', 'ipv4net', 'ipv6net', 'ipv4rspool', 'ipv4vs', 'file', 'rack') as $realm)
+		if (isset ($summary[$realm]))
+			foreach ($summary[$realm] as $key => $record)
+				if (! isolatedPermission ($realm, 'default', spotEntity ($realm, $record['id'])))
+					unset ($summary[$realm][$key]);
 	// clear empty search result realms
 	foreach ($summary as $key => $data)
 		if (! count ($data))
 			unset ($summary[$key]);
 	return $summary;
+}
+
+// returns URL to redirect to, or NULL if $result_type is unknown
+function buildSearchRedirectURL ($result_type, $record)
+{
+	global $page;
+	$next_page = $result_type;
+	$id = isset ($record['id']) ? $record['id'] : NULL;
+	$params = array();
+	switch ($result_type)
+	{
+		case 'ipv4addressbydq':
+		case 'ipv6addressbydq':
+		case 'ipv4addressbydescr':
+		case 'ipv6addressbydescr':
+			$next_page = strlen ($record['ip']) == 16 ? 'ipv6net' : 'ipv4net';
+			$id = isset ($record['net_id']) ? $record['net_id'] : getIPAddressNetworkId ($record['ip']);
+			$params['hl_ip'] = ip_format ($record['ip']);
+			break;
+		case 'object':
+			if (isset ($record['by_port']) and 1 == count ($record['by_port']))
+			{
+				$found_ports_ids = array_keys ($record['by_port']);
+				$params['hl_port_id'] = $found_ports_ids[0];
+			}
+			break;
+		case 'ipv4net':
+		case 'ipv6net':
+		case 'vlan':
+		case 'user':
+		case 'ipv4rspool':
+		case 'ipv4vs':
+		case 'file':
+		case 'rack':
+			break;
+		default:
+			return NULL;
+	}
+	if (array_key_exists ($next_page, $page) && isset ($page[$next_page]['bypass']))
+		$key = $page[$next_page]['bypass'];
+	if (! isset ($key) || ! isset ($id))
+		return NULL;
+	$params[$key] = $id;
+	return buildRedirectURL ($next_page, 'default', $params);
 }
 
 function getRackCodeWarnings ()
@@ -4943,8 +5023,11 @@ function setMessage ($type, $message, $direct_rendering)
 	global $script_mode;
 	if ($direct_rendering)
 		echo '<div class="msg_' . $type . '">' . $message . '</div>';
-	elseif (isset ($script_mode) and $script_mode and ($type == 'warning' or $type == 'error'))
-		file_put_contents ('php://stderr', strtoupper ($type) . ': ' . $message . "\n");
+	elseif (isset ($script_mode) and $script_mode)
+	{
+		if ($type == 'warning' or $type == 'error')
+			file_put_contents ('php://stderr', strtoupper ($type) . ': ' . $message . "\n");
+	}
 	else
 	{
 		switch ($type)
@@ -5232,6 +5315,8 @@ function explodeTableLine ($line, $table_schema)
 // returns number of changed ports (both local and remote)
 // shows error messages unconditionally, and success messages respecting  to $verbose setting
 // if $mutex_rev is set, checks if it is outdated
+// NOTE: this function is calling itself through initiateUplinksReverb. It is important that
+// the call to initiateUplinksReverb is outside of DB transaction scope.
 function apply8021qChangeRequest ($switch_id, $changes, $verbose = TRUE, $mutex_rev = NULL)
 {
 	global $dbxlink;
@@ -5431,7 +5516,7 @@ function isIPNetworkEmpty (&$netinfo)
 // returns the first element of given array, or NULL if array is empty
 function array_first ($array)
 {
-	$single = array_slice ($array, 0, 1);
+	$single = array_slice (array_values ($array), 0, 1);
 	if (count ($single))
 		return $single[0];
 }
@@ -5439,7 +5524,7 @@ function array_first ($array)
 // returns the last element of given array, or NULL if array is empty
 function array_last ($array)
 {
-	$single = array_slice ($array, -1, 1);
+	$single = array_slice (array_values ($array), -1, 1);
 	if (count ($single))
 		return $single[0];
 }
@@ -5681,6 +5766,40 @@ function sortLinks ($port_id, $unsorted_links, $sorted_links = array (), $level 
 		}
 	}
 	return $sorted_links;
+}
+
+// takes an array of cells,
+// returns an array indexed by cell id, values are simple text representation of a cell.
+// Intended to pass its return value to printSelect routine.
+function formatEntityList ($list)
+{
+	$ret = array();
+	foreach ($list as $entity)
+		switch ($entity['realm'])
+		{
+			case 'object':
+				$ret[$entity['id']] = $entity['dname'];
+				break;
+			case 'ipv4vs':
+				$ret[$entity['id']] = $entity['name'] . (strlen ($entity['name']) ? ' ' : '') . '(' . $entity['dname'] . ')';
+				break;
+			case 'ipv4rspool':
+				$ret[$entity['id']] = $entity['name'];
+				break;
+			default:
+				$ret[$entity['id']] = $entity['realm'] . '#' . $entity['id'];
+		}
+	asort ($ret);
+	return $ret;
+}
+
+// returns reversed (top-to-bottom) $unit_no if $rack_cell is configured to be reversed,
+// or unchanged $unit_no otherwise.
+function inverseRackUnit ($unit_no, $rack_cell)
+{
+	if (considerConfiguredConstraint ($rack_cell, 'REVERSED_RACKS_LISTSRC'))
+		$unit_no = $rack_cell['height'] - $unit_no + 1;
+	return $unit_no;
 }
 
 ?>

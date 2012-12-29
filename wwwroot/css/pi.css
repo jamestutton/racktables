@@ -255,7 +255,7 @@ a:hover {
 	text-decoration: underline;
 }
 
-/* anchors  must be defined in order (link,visited,active,hover) 
+/* anchors  must be defined in order (link,visited,active,hover)
    to avoid unpredictable results */
 
 input {
@@ -451,7 +451,7 @@ border-color: #ff8c00;
 }
 
 div.commentblock {
-	white-space: pre;
+	white-space: pre-wrap;
 	text-align: left;
 }
 
@@ -677,7 +677,7 @@ a.img-link {
 /* text label with rackcode (object-rackspace tab) */
 .filter-text {
 	font-family: "Courier New",Courier,monospace;
-}	
+}
 
 /* VLAN lists diff formatting (8021Q Ports and 8021Q Sync pages) */
 .vlan-diff {
@@ -778,7 +778,7 @@ a.noclick {
 
 .logentry {
 	text-align: left;
-	white-space: pre;
+	white-space: pre-wrap;
 	font-family: monospace;
 	font-style: italic;
 }

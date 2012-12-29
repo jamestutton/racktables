@@ -152,7 +152,18 @@ speed of IP tree will increase radically. The price is you will not see the rout
 IP tree at all.
 
 ENDOFTEXT
+,
 
+	'0.20.1' => <<<ENDOFTEXT
+The 0.20.0 release includes bug which breaks IP networks' capacity displaying on 32-bit architecture machines. To fix this, this release makes use of PHP's BC Math module. It is a new reqiurement. Most PHP distributions have this module already enabled, but if yours does not - you need yo recompile PHP.
+
+Security context of 'ipaddress' page now includes tags from the network containing an IP address. This means that you should audit your permission rules to check there is no unintended allows of changing IPs based on network's tagset. Example:
+	allow {client network} and {New York}
+This rule now not only allows any operation on NY client networks, but also any operation with IP addresses included in those networks. To fix this, you should change the rule this way:
+	allow {client network} and {New York} and not {\$page_ipaddress}
+
+ENDOFTEXT
+,
 );
 
 // At the moment we assume, that for any two releases we can
@@ -206,6 +217,9 @@ function getDBUpgradePath ($v1, $v2)
 		'0.19.14',
 		'0.20.0',
 		'0.20.1',
+		'0.20.2',
+		'0.20.3',
+		'0.20.4',
 	);
 	if (!in_array ($v1, $versionhistory) or !in_array ($v2, $versionhistory))
 		return NULL;
@@ -592,10 +606,10 @@ CREATE TABLE `PortInterfaceCompat` (
 		case '0.17.9':
 			$query[] = "ALTER table Config add `is_userdefined` enum('yes','no') NOT NULL default 'no' AFTER `is_hidden`";
 			$query[] = "
-CREATE TABLE `UserConfig` ( 
-	`varname` char(32) NOT NULL, 
-	`varvalue` char(255) NOT NULL, 
-	`user` char(64) NOT NULL, 
+CREATE TABLE `UserConfig` (
+	`varname` char(32) NOT NULL,
+	`varvalue` char(255) NOT NULL,
+	`user` char(64) NOT NULL,
 	UNIQUE KEY `user_varname` (`user`,`varname`)
 ) TYPE=InnoDB";
 			$query[] = "UPDATE Config SET is_userdefined = 'yes' WHERE varname IN
@@ -1414,7 +1428,7 @@ CREATE TABLE `IPv6Log` (
 				$racks = $result->fetchAll (PDO::FETCH_ASSOC);
 				unset ($result);
 				$sort_order = 1;
-				foreach ($racks as $rack) 
+				foreach ($racks as $rack)
 				{
 					// Add the rack as an object, set the height and sort order as attributes, link the rack to the row,
 					//   update rackspace, tags and files to reflect new rack_id, move history
@@ -1543,10 +1557,16 @@ CREATE TABLE `CactiServer` (
 ) ENGINE=InnoDB
 ";
 			$query[] = "ALTER TABLE CactiGraph ADD COLUMN server_id int(10) unsigned NOT NULL AFTER object_id";
+
 			$result = $dbxlink->query ('SELECT COUNT(*) AS cnt FROM CactiGraph');
-			$row = $result->fetchAll (PDO::FETCH_ASSOC);
+			$row = $result->fetch (PDO::FETCH_ASSOC);
 			unset ($result);
-			if ($row['cnt'] != 0)
+
+			$result = $dbxlink->query ("SELECT varvalue FROM Config WHERE varname = 'CACTI_URL'");
+			$cacti_url_row = $result->fetch (PDO::FETCH_ASSOC);
+			unset ($result);
+
+			if ($row['cnt'] != 0 || is_array ($cacti_url_row) && strlen ($cacti_url_row['varvalue']))
 			{
 				$query[] = "INSERT INTO CactiServer (id) VALUES (1)";
 				$query[] = "UPDATE CactiServer SET base_url = (SELECT varvalue FROM Config WHERE varname = 'CACTI_URL') WHERE id = 1";
@@ -1560,6 +1580,50 @@ CREATE TABLE `CactiServer` (
 			$query[] = "ALTER TABLE CactiGraph ADD CONSTRAINT `CactiGraph-FK-server_id` FOREIGN KEY (server_id) REFERENCES CactiServer (id)";
 			$query[] = "DELETE FROM Config WHERE varname IN('CACTI_URL', 'CACTI_USERNAME', 'CACTI_USERPASS')";
 			$query[] = "UPDATE Config SET varvalue = '0.20.1' WHERE varname = 'DB_VERSION'";
+			break;
+		case '0.20.2':
+			$query[] = "ALTER TABLE TagStorage ADD COLUMN tag_is_assignable ENUM('yes', 'no') NOT NULL default 'yes' AFTER tag_id";
+			$query[] = "ALTER TABLE TagStorage ADD KEY `tag_id-tag_is_assignable` (tag_id, tag_is_assignable)";
+			$query[] = "ALTER TABLE TagTree ADD COLUMN is_assignable ENUM('yes', 'no') NOT NULL default 'yes' AFTER parent_id";
+			$query[] = "ALTER TABLE TagTree ADD KEY `id-is_assignable` (id, is_assignable)";
+			$query[] = "ALTER TABLE TagStorage DROP FOREIGN KEY `TagStorage-FK-tag_id`";
+			$query[] = "ALTER TABLE TagStorage ADD CONSTRAINT `TagStorage-FK-TagTree` FOREIGN KEY (tag_id, tag_is_assignable) REFERENCES TagTree (id, is_assignable)";
+			$query[] = "UPDATE UserAccount SET user_realname = NULL WHERE user_realname = ''";
+			$query[] = "UPDATE Object SET comment = NULL WHERE comment = ''";
+			$query[] = "
+CREATE TABLE `MuninServer` (
+  `id` int(10) unsigned NOT NULL auto_increment,
+  `base_url` char(255) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB
+";
+			$query[] = "
+CREATE TABLE `MuninGraph` (
+  `object_id` int(10) unsigned NOT NULL,
+  `server_id` int(10) unsigned NOT NULL,
+  `graph` char(255) NOT NULL,
+  `caption`  char(255) DEFAULT NULL,
+  PRIMARY KEY (`object_id`,`server_id`,`graph`),
+  KEY `server_id` (`server_id`),
+  KEY `graph` (`graph`),
+  CONSTRAINT `MuninGraph-FK-server_id` FOREIGN KEY (`server_id`) REFERENCES `MuninServer` (`id`),
+  CONSTRAINT `MuninGraph-FK-object_id` FOREIGN KEY (`object_id`) REFERENCES `Object` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB
+";
+			$query[] = "INSERT INTO `Config` (varname, varvalue, vartype, emptyok, is_hidden, is_userdefined, description) VALUES ('MUNIN_LISTSRC','false','string','yes','no','no','List of object with Munin graphs')";
+			$query[] = "INSERT INTO `Config` (varname, varvalue, vartype, emptyok, is_hidden, is_userdefined, description) VALUES ('8021Q_MULTILINK_LISTSRC','false','string','yes','no','no','List source: IPv4/IPv6 networks allowing multiple VLANs from same domain')";
+			$query[] = "ALTER TABLE VLANIPv4 ADD UNIQUE `network-domain-vlan` (ipv4net_id, domain_id, vlan_id)";
+			$query[] = "ALTER TABLE VLANIPv4 DROP KEY `network-domain`";
+			$query[] = "ALTER TABLE VLANIPv6 ADD UNIQUE `network-domain-vlan` (ipv6net_id, domain_id, vlan_id)";
+			$query[] = "ALTER TABLE VLANIPv6 DROP KEY `network-domain`";
+			$query[] = "UPDATE Config SET varvalue = '0.20.2' WHERE varname = 'DB_VERSION'";
+			break;
+		case '0.20.3':
+			$query[] = "UPDATE Config SET varvalue = '0.20.3' WHERE varname = 'DB_VERSION'";
+			break;
+		case '0.20.4':
+			$query[] = "INSERT INTO `Config` (varname, varvalue, vartype, emptyok, is_hidden, is_userdefined, description) VALUES ('REVERSED_RACKS_LISTSRC', 'false', 'string', 'yes', 'no', 'no', 'List of racks with reversed (top to bottom) units order')";
+			$query[] = "UPDATE Config SET varvalue = '0.20.4' WHERE varname = 'DB_VERSION'";
 			break;
 		case '0.20.2':
 			// allow one-to-many port links
@@ -1752,7 +1816,7 @@ function renderUpgraderHTML()
 	{
 		die ("Database connection failed:\n\n" . $e->getMessage());
 	}
-	
+
 	if
 	(
 		!isset ($_SERVER['PHP_AUTH_USER']) or
@@ -1877,7 +1941,7 @@ END
 		$row['vip'] = ip4_int2bin ($row['vip']);
 		usePreparedInsertBlade ('IPv4VS_new', $row);
 	}
-	
+
 	$dbxlink->query (<<<END
 CREATE TABLE `IPv4RS_new` (
   `id` int(10) unsigned NOT NULL auto_increment,

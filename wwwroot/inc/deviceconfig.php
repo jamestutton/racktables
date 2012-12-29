@@ -48,7 +48,7 @@ function ios12ReadLLDPStatus ($input)
 			continue;
 
 		$matches = preg_split ('/\s+/', $line);
-		
+
 		switch (count ($matches))
 		{
 		case 5:
@@ -220,6 +220,7 @@ function ftos8ReadLLDPStatus ($input)
 	(
 		'Interface name (5)',
 		'Interface Alias (1)',
+		'Locally assigned (7)',
 	);
 	foreach (explode ("\n", $input) as $line)
 	{
@@ -846,7 +847,12 @@ function vrp55Read8021QConfig ($input)
 				break;
 			case (preg_match ('@^interface ((Ethernet|GigabitEthernet|XGigabitEthernet|Eth-Trunk)([[:digit:]]+(/[[:digit:]]+)*))$@', $line, $matches)):
 				$port_name = ios12ShortenIfName ($matches[1]);
-				$ret['current'] = array ('port_name' => $port_name);
+				$ret['current'] = array
+				(
+					'port_name' => $port_name,
+					'allowed' => array (VLAN_DFL_ID),
+					'native' => VLAN_DFL_ID,
+				);
 				$ret['portconfig'][$port_name][] = array ('type' => 'line-header', 'line' => $line);
 				break;
 			}
@@ -869,17 +875,16 @@ function vrp55Read8021QConfig ($input)
 		// we get a problem).
 		case preg_match ('/^ port (default|trunk pvid) vlan ([[:digit:]]+)$/', $line, $matches):
 			$ret['current']['native'] = $matches[2];
-			if (!array_key_exists ('allowed', $ret['current']))
-				$ret['current']['allowed'] = array();
 			if (!in_array ($ret['current']['native'], $ret['current']['allowed']))
 				$ret['current']['allowed'][] = $ret['current']['native'];
 			break;
 		case preg_match ('/^ port trunk allow-pass vlan (.+)$/', $line, $matches):
-			if (!array_key_exists ('allowed', $ret['current']))
-				$ret['current']['allowed'] = array();
 			foreach (vrp53ParseVLANString ($matches[1]) as $vlan_id)
 				if (!in_array ($vlan_id, $ret['current']['allowed']))
 					$ret['current']['allowed'][] = $vlan_id;
+			break;
+		case preg_match ('/^ undo port trunk allow-pass vlan (.+)$/', $line, $matches):
+			$ret['current']['allowed'] = array_diff ($ret['current']['allowed'], vrp53ParseVLANString ($matches[1]));
 			break;
 		case $line == ' undo portswitch':
 		case preg_match ('/^ ip address /', $line):
@@ -893,10 +898,6 @@ function vrp55Read8021QConfig ($input)
 			$line_class = 'line-header';
 			if (!array_key_exists ('link-type', $ret['current']))
 				$ret['current']['link-type'] = 'hybrid';
-			if (!array_key_exists ('allowed', $ret['current']))
-				$ret['current']['allowed'] = array();
-			if (!array_key_exists ('native', $ret['current']))
-				$ret['current']['native'] = 0;
 			switch ($ret['current']['link-type'])
 			{
 			case 'access':
@@ -905,7 +906,7 @@ function vrp55Read8021QConfig ($input)
 					$ret['current']['native'] ? array
 					(
 						'mode' => 'access',
-						'allowed' => $ret['current']['allowed'],
+						'allowed' => array ($ret['current']['native']),
 						'native' => $ret['current']['native'],
 					) : array
 					(
@@ -919,7 +920,7 @@ function vrp55Read8021QConfig ($input)
 				(
 					'mode' => 'trunk',
 					'allowed' => $ret['current']['allowed'],
-					'native' => $ret['current']['native'],
+					'native' => in_array ($ret['current']['native'], $ret['current']['allowed']) ? $ret['current']['native'] : 0,
 				);
 				break;
 			case 'hybrid': // hybrid ports are not supported
@@ -1499,15 +1500,23 @@ function vrp55TranslatePushQueue ($dummy_object_id, $queue, $dummy_vlan_names)
 			// (unlike the way VRP 5.30 defines "trunk" and "hybrid"),
 			// but it is necessary to undo configured VLANs on a port
 			// for mode change command to succeed.
-			$undo = array
+			$before = array
 			(
 				'access' => "undo port trunk allow-pass vlan all\n" .
 					"port trunk allow-pass vlan 1\n" .
 					"undo port trunk pvid vlan\n",
 				'trunk' => "undo port default vlan\n",
 			);
-			$ret .= "interface ${cmd['arg1']}\n" . $undo[$cmd['arg2']];
-			$ret .= "port link-type ${cmd['arg2']}\nquit\n";
+			$after = array
+			(
+				'access' => '',
+				'trunk' => "undo port trunk allow-pass vlan 1\n",
+			);
+			$ret .= "interface ${cmd['arg1']}\n";
+			$ret .= $before[$cmd['arg2']];
+			$ret .= "port link-type ${cmd['arg2']}\n";
+			$ret .= $after[$cmd['arg2']];
+			$ret .= "quit\n";
 			break;
 		case 'begin configuration':
 			$ret .= "system-view\n";
@@ -1735,8 +1744,7 @@ function ftos8TranslatePushQueue ($dummy_object_id, $queue, $vlan_names)
 			$ret .= "int vlan ${cmd['arg1']}\nexit\n";
 			break;
 		case 'destroy VLAN':
-			if (isset ($vlan_names[$cmd['arg1']]))
-				$ret .= "no int vlan ${cmd['arg1']}\n";
+			$ret .= "no int vlan ${cmd['arg1']}\n";
 			break;
 		case 'rem allowed':
 			while (! empty ($cmd['vlans']))
@@ -1752,7 +1760,6 @@ function ftos8TranslatePushQueue ($dummy_object_id, $queue, $vlan_names)
 			{
 				$vlan = array_shift ($cmd['vlans']);
 				$ret .= "int vlan $vlan\n";
-				$ret .= "no untagged ${cmd['port']}\n"; // redundant, switch often responses with error
 				$ret .= "tagged ${cmd['port']}\n";
 				$ret .= "exit\n";
 			}
@@ -1769,9 +1776,13 @@ function ftos8TranslatePushQueue ($dummy_object_id, $queue, $vlan_names)
 			$ret .= "exit\n";
 			break;
 		case 'set native':
+			$ret .= "int vlan ${cmd['arg2']}\n";
+			$ret .= "no tagged ${cmd['arg1']}\n";
+			$ret .= "untagged ${cmd['arg1']}\n";
+			$ret .= "exit\n";
+			break;
 		case 'set access':
 			$ret .= "int vlan ${cmd['arg2']}\n";
-			$ret .= "no tagged ${cmd['arg1']}\n"; // redundant, switch often responses with error
 			$ret .= "untagged ${cmd['arg1']}\n";
 			$ret .= "exit\n";
 			break;
@@ -2096,7 +2107,7 @@ function jun10Read8021QConfig ($input)
 		'portconfig' => array(),
 	);
 	$lines = explode ("\n", $input);
-	
+
 	// get vlan list
 	$vlans = array('default' => 1);
 	$names = array();
@@ -2142,7 +2153,7 @@ function jun10Read8021QConfig ($input)
 		if (preg_match ('/# END OF CONFIG|^(interface-range )?(\S+)\s+{$/', $line, $m)) // line starts with interface name
 		{ // found interface section opening, or end-of-file
 			if (isset ($current['name']) and $current['is_ethernet'])
-			{ 
+			{
 				// add previous interface to the results
 				if (! isset ($current['config']['mode']))
 					$current['config']['mode'] = 'access';
@@ -2227,7 +2238,7 @@ function jun10Read8021QConfig ($input)
 			$ret['portconfig'][$current['name']][] = array ('type' => $line_class, 'line' => $line);
 		}
 	}
-	
+
 	return $ret;
 }
 
@@ -3155,7 +3166,7 @@ function eos4ReadMacList ($text)
 		{
 			if (substr ($line, 0, 19) == 'Total Mac Addresses') # end of table
 				break;
-			if (preg_match ('/^(\d+)\s+(\S+)\s+DYNAMIC\s+(\S+)\s/', $line, $m))
+			if (preg_match ('/^ *(\d+)\s+(\S+)\s+DYNAMIC\s+(\S+)\s/', $line, $m))
 				$result[ios12ShortenIfName ($m[3])][] = array
 				(
 					'mac' => $m[2],
@@ -3202,7 +3213,7 @@ function ucsReadInventory ($text)
 			$tmp = array();
 		}
 	# validate the array
-	if (count ($replies) != 2)
+	if (count ($replies) != 2 and count ($replies) != 1)
 		throw new RTGatewayError ('replies count does not match commands count');
 	if ($replies[0]['code'] != 'OK')
 		throw new RTGatewayError ('UCS login failed');

@@ -472,7 +472,7 @@ function transformRequestData()
 	$sic = array();
 	// walk through merged GET and POST instead of REQUEST array because it
 	// can contain cookies with data which could not be decoded from UTF-8
-	foreach (array_merge($_GET, $_POST) as $key => $value)
+	foreach (($_POST + $_GET) as $key => $value)
 	{
 		if (is_array ($value))
 			$_REQUEST[$key] = $value;
@@ -506,7 +506,7 @@ function addJS ($data, $inline = FALSE, $group = 'default')
 {
 	static $javascript = array();
 	static $seen_filenames = array();
-	
+
 	if (! isset ($data))
 	{
 		ksort ($javascript);
@@ -556,7 +556,7 @@ function addCSS ($data, $inline = FALSE)
 {
 	static $styles = array();
 	static $seen_filenames = array();
-	
+
 	if (! isset ($data))
 		return $styles;
 	if ($inline)
@@ -596,7 +596,7 @@ function getRenderedIPv4NetCapacity ($range)
 		$total = ip4_range_size ($range);
 
 		// compute $a_total: own range size, without subranges
-		if (empty ($range['spare_ranges']))
+		if ($range['kidc'] == 0)
 			$a_total = $total;
 		else
 		{
@@ -706,7 +706,7 @@ function getRenderedIPv6NetCapacity ($range)
 
 	$dec_order = intval ((128 - $range['mask']) / 10) * 3;
 	$mult = isset ($prefixes[$dec_order]) ? $prefixes[$dec_order] : '??';
-	
+
 	$cnt = 1 << ((128 - $range['mask']) % 10);
 	if ($cnt == 1 && $mult == '')
 		$cnt = '1';
@@ -866,7 +866,7 @@ function renderEntitySummary ($cell, $title, $values = array())
 			$class .= ' ' . $m[1];
 			$name = $m[2];
 		}
-		if ($name == 'tags:') 
+		if ($name == 'tags:')
 		{
 			$baseurl = '';
 			if (isset ($page_by_realm[$cell['realm']]))
@@ -931,18 +931,13 @@ function getProgressBar ($percentage = 0, $theme = '', $inline = FALSE)
 
 function renderNetVLAN ($cell)
 {
-	if (! empty ($cell['8021q']))
-	{
-		$seen = array();
-		foreach ($cell['8021q'] as $vlan_info)
-			$seen[$vlan_info['vlan_id']] = $vlan_info['domain_id'] . '-' . $vlan_info['vlan_id'];
-		echo '<div class="vlan"><strong><small>VLAN' . (count ($seen) > 1 ? 'S' : '') . '</small> ';
-		$links = array();
-		foreach ($seen as $vlan_id => $vlan_ck)
-			$links[] = '<a href="' . makeHref (array ('page' => 'vlan', 'vlan_ck' => $vlan_ck)) . '">' . $vlan_id . '</a>';
-		echo implode (', ', $links);
-		echo '</strong></div>';
-	}
+	if (empty ($cell['8021q']))
+		return;
+	$links = array();
+	foreach ($cell['8021q'] as $vi)
+		$links[] = mkA ($vi['vlan_id'], 'vlan', "${vi['domain_id']}-${vi['vlan_id']}");
+	$noun = count ($cell['8021q']) > 1 ? 'VLANs' : 'VLAN';
+	echo "<div class='vlan'><strong><small>${noun}</small> " . implode (', ', $links) . '</strong></div>';
 }
 
 function includeJQueryUI ($do_css = TRUE)
@@ -950,6 +945,30 @@ function includeJQueryUI ($do_css = TRUE)
 	addJS ('js/jquery-ui-1.8.21.min.js');
 	if ($do_css)
 		addCSS ('css/jquery-ui-1.8.22.redmond.css');
+}
+
+function getRenderedIPPortPair ($ip, $port = NULL)
+{
+	return "<a href=\"" .
+		makeHref (array ('page' => 'ipaddress',  'tab'=>'default', 'ip' => $ip)) .
+		"\">" . $ip . "</a>" .
+		(isset ($port) ? ":" . $port : "");
+}
+
+// Print common operation form prologue, include bypass argument, if
+// appropriate, and some extra hidden inputs, if requested.
+// Use special encoding for upload forms
+function printOpFormIntro ($opname, $extra = array(), $upload = FALSE)
+{
+	global $pageno, $tabno, $page;
+
+	echo "<form method=post id=${opname} name=${opname} action='?module=redirect&page=${pageno}&tab=${tabno}&op=${opname}'";
+	if ($upload)
+		echo " enctype='multipart/form-data'";
+	echo ">";
+	fillBypassValues ($pageno, $extra);
+	foreach ($extra as $inputname => $inputvalue)
+		printf ('<input type=hidden name="%s" value="%s">', htmlspecialchars ($inputname, ENT_QUOTES), htmlspecialchars ($inputvalue, ENT_QUOTES));
 }
 
 ?>

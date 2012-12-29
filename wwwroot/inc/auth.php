@@ -24,38 +24,40 @@ function authenticate ()
 		$auto_tags,
 		$user_given_tags,
 		$user_auth_src,
+		$script_mode,
 		$require_local_account;
 	if (!isset ($user_auth_src) or !isset ($require_local_account))
 		throw new RackTablesError ('secret.php: either user_auth_src or require_local_account are missing', RackTablesError::MISCONFIGURED);
 	if (isset ($_REQUEST['logout']))
 		throw new RackTablesError ('', RackTablesError::NOT_AUTHENTICATED); // Reset browser credentials cache.
-	switch ($user_auth_src)
-	{
-		case 'database':
-		case 'ldap':
-			if
-			(
-				!isset ($_SERVER['PHP_AUTH_USER']) or
-				!strlen ($_SERVER['PHP_AUTH_USER']) or
-				!isset ($_SERVER['PHP_AUTH_PW']) or
-				!strlen ($_SERVER['PHP_AUTH_PW'])
-			)
-				throw new RackTablesError ('', RackTablesError::NOT_AUTHENTICATED);
-			$remote_username = $_SERVER['PHP_AUTH_USER'];
-			break;
-		case 'httpd':
-			if
-			(
-				!isset ($_SERVER['REMOTE_USER']) or
-				!strlen ($_SERVER['REMOTE_USER'])
-			)
-				throw new RackTablesError ('The web-server didn\'t authenticate the user, although ought to do.', RackTablesError::MISCONFIGURED);
-			$remote_username = $_SERVER['REMOTE_USER'];
-			break;
-		default:
-			throw new RackTablesError ('Invalid authentication source!', RackTablesError::MISCONFIGURED);
-			die;
-	}
+	if ( !isset ($script_mode) || !$script_mode || !( isset ($remote_username) && strlen ($remote_username) ) )
+		switch ($user_auth_src)
+		{
+			case 'database':
+			case 'ldap':
+				if
+				(
+					!isset ($_SERVER['PHP_AUTH_USER']) or
+					!strlen ($_SERVER['PHP_AUTH_USER']) or
+					!isset ($_SERVER['PHP_AUTH_PW']) or
+					!strlen ($_SERVER['PHP_AUTH_PW'])
+				)
+					throw new RackTablesError ('', RackTablesError::NOT_AUTHENTICATED);
+				$remote_username = $_SERVER['PHP_AUTH_USER'];
+				break;
+			case 'httpd':
+				if
+				(
+					!isset ($_SERVER['REMOTE_USER']) or
+					!strlen ($_SERVER['REMOTE_USER'])
+				)
+					throw new RackTablesError ('The web-server didn\'t authenticate the user, although ought to do.', RackTablesError::MISCONFIGURED);
+				$remote_username = $_SERVER['REMOTE_USER'];
+				break;
+			default:
+				throw new RackTablesError ('Invalid authentication source!', RackTablesError::MISCONFIGURED);
+				die;
+		}
 	$userinfo = constructUserCell ($remote_username);
 	if ($require_local_account and !isset ($userinfo['user_id']))
 		throw new RackTablesError ('', RackTablesError::NOT_AUTHENTICATED);
@@ -63,6 +65,8 @@ function authenticate ()
 	$auto_tags = array_merge ($auto_tags, $userinfo['atags']);
 	switch (TRUE)
 	{
+		case isset ($script_mode) && $script_mode:
+			return; // success
 		// Just trust the server, because the password isn't known.
 		case ('httpd' == $user_auth_src):
 			$remote_displayname = strlen ($userinfo['user_realname']) ?
@@ -243,7 +247,7 @@ function processAdjustmentSentence ($modlist, &$chain)
 // a wrapper for two LDAP auth methods below
 function authenticated_via_ldap ($username, $password, &$ldap_displayname)
 {
-	global $LDAP_options;
+	global $LDAP_options, $debug_mode;
 	if
 	(
 		$LDAP_options['cache_retry'] > $LDAP_options['cache_refresh'] or
@@ -262,7 +266,12 @@ function authenticated_via_ldap ($username, $password, &$ldap_displayname)
 	}
 	catch (PDOException $e)
 	{
-		throw new RackTablesError ('LDAP caching error', RackTablesError::DB_WRITE_FAILED);
+		if (isset ($debug_mode) && $debug_mode)
+			// in debug mode re-throw DB exception as-is
+			throw $e;
+		else
+			// re-create exception to hide private data from its backtrace
+			throw new RackTablesError ('LDAP caching error', RackTablesError::DB_WRITE_FAILED);
 	}
 }
 
@@ -384,7 +393,7 @@ function queryLDAPServer ($username, $password)
 
 	if(extension_loaded('ldap') === FALSE)
 		throw new RackTablesError ('LDAP misconfiguration. LDAP PHP Module is not installed.', RackTablesError::MISCONFIGURED);
-		
+
 	$connect = @ldap_connect ($LDAP_options['server']);
 	if ($connect === FALSE)
 		return array ('result' => 'CAN');

@@ -1,4 +1,32 @@
-0.20.1
+0.20.4
+	bugfix: %GPASS% dictionary markers were ignored in selectboxes
+	bugfix: 802.1Q: better Force10 switches support
+	bugfix: racks, vs, rspools were displayed in search results even if user had no permissions to view them
+	update: vlan search results now include binded IP networks
+	new feature: configurable top-to-bottom units order in particular racks (#601)
+0.20.3 2012-12-19
+	bugfix: DB exception on ports linking (#699)
+0.20.2 2012-12-19
+	bugfix: explicitly request Cacti RRA ID 1 (#466)
+	bugfix: improve UCS error handling
+	bugfix: proper handling of VLAN 1 in Huawei VRP 5.7 802.1Q gateway
+	bugfix: database was corrupted after IPv4 networks creation on some PHP versions (#643)
+	bugfix: LivePTR erased comments when performing an import (#645)
+	bugfix: NX-OS LLDP-fetching connection was sometimes hanged up prematurely
+	bugfix: list objects page threw exception if an object's container was nameless (#661)
+	bugfix: Invalid binary IP exceptions on certain IPs (#673, #675)
+	bugfix: list all VLANs of a network in tree view (#697)
+	update: SLB: ability to specify multiple RS ports
+	update: remove old gateways code, including Live VLANs
+	update: allow linking more than one VLAN from same domain per a network
+	update: make 802.1Q port list offline management multi-port (#653)
+	update: SNMP support for Cisco WS-C2948 (#546), D-Link DGS-1210-24 (#629), Motorola RFS4000 (#657)
+	update: allow setting MySQL client buffer size (#659)
+	update: cut 'Quidway' word from Huawei switch dictionary items for unification with newer products
+	update: 802.1Q: treat connection errors as recoverable
+	new feature: abstract tags, which cannot be assigned (#577)
+	new feature: added support for munin graphs (#406) by Michael Holm
+0.20.1 2012-10-04
 	bugfix: restore D-Link (#533) and Linux (#541) gateway support
 	bugfix: IPv4 network capacity was not displayed on 32-bit machines (#602)
 	bugfix: fixed infinite loop when creating default (/0) IP networks
@@ -7,11 +35,17 @@
 	bugfix: Location attributes weren't being saved (#605)
 	bugfix: duplicate names for Racks and Rows weren't allowed (#606)
 	bugfix: ports and IPs highlighting is kept after edit operation
-	bugfix: preserve page number after data importing on LivePTR tab (#424)
+	bugfix: preserve page number after data importing on LivePTR tab (#421)
 	bugfix: 0.19.10 moved some HW models to a different dict chapter, update the type of affected objects accordingly (#609)
+	bugfix: Tab "Live ports" is blank if network error occurs (#489)
+	bugfix: renaming top-level tag is impossible (#621)
+	bugfix: IPv4 network capacity of fully-allocated parent range was shown incorrectly (#611)
 	update: confirmation boxes when clearing attribute values (#565)
+	update: log records containing long lines are now word-wrapped (#608) by Stephen Groat
+	update: SNMP support for HP J9020A (#619), HP J9280A (#615), TL-SG5426 (#590)
+	new feature: IP addresses inherit tags from their parent networks (#375)
 	new feature: initial Cisco UCS support
-	new feature: offline management of 802.1Q port list
+	new feature: offline management of 802.1Q port list (#460)
 	new feature: multiple Cacti servers (#534)
 0.20.0 2012-09-09
 	bugfix: when long action takes place, other tabs in browser are functional now
@@ -113,7 +147,7 @@
 	bugfix: SNMP discovery of APC PDUs returned error (#504)
 	bugfix: catch errors when uploading files (#420)
 	update: list of virtual object types is now maintained as a Config setting (#488)
-	update: when an object is contained within another, display the parent's rackspace allocation info when viewing the child (#432) 
+	update: when an object is contained within another, display the parent's rackspace allocation info when viewing the child (#432)
 	update: added the 'Slot number' attribute to object types which may be mounted in a blade chassis (#474)
 	update: added an 'Uncheck all' button to the rackspace allocation page (#490)
 	update: ability to change cable ID without deleting & re-adding the link (#457)
@@ -589,7 +623,7 @@
 	bugfix: rowspan attribute was computed incorrectly sometimes
 	bugfix: protect referenced dictionary records from deletion
 	bugfix: config reset was wrong for default port type
-	bugfix: fixed incorrect string escaping caused by PHP magic_quotes 
+	bugfix: fixed incorrect string escaping caused by PHP magic_quotes
 	update: Live VLANs color legend now distinguishes between 1 and 0
 		MAC addresses on a port
 	update: fixed tabindex in NATv4 rules form

@@ -46,6 +46,17 @@ function dispatchImageRequest()
 			throw new InvalidRequestArgException ('graph_id', $_REQUEST['graph_id']);
 		proxyCactiRequest ($_REQUEST['server_id'], $_REQUEST['graph_id']);
 		break;
+	case 'muningraph':
+		$pageno = 'object';
+		$tabno = 'munin';
+		fixContext();
+		assertPermission();
+		genericAssertion ('server_id', 'uint');
+		genericAssertion ('graph', 'string');
+		if (! array_key_exists ($_REQUEST['graph'], getMuninGraphsForObject (getBypassValue())))
+			throw new InvalidRequestArgException ('graph', $_REQUEST['graph']);
+		proxyMuninRequest ($_REQUEST['server_id'], $_REQUEST['graph']);
+		break;
 	default:
 		renderErrorImage();
 	}
@@ -288,7 +299,7 @@ function renderImagePreview ($file_id)
 {
 	if ($image = getFileCache ($file_id)) //Cache Hit
 	{
-		header("Content-type: image/jpeg"); 
+		header("Content-type: image/jpeg");
 		echo $image;
 		return;
 	}
@@ -374,7 +385,7 @@ function proxyCactiRequest ($server_id, $graph_id)
 	if (! array_key_exists ($server_id, $servers))
 		throw new InvalidRequestArgException ('server_id', $server_id);
 	$cacti_url = $servers[$server_id]['base_url'];
-	$url = $cacti_url . "/graph_image.php?action=view&local_graph_id=" . $graph_id;
+	$url = "${cacti_url}/graph_image.php?action=view&local_graph_id=${graph_id}&rra_id=1";
 	$postvars = 'action=login&login_username=' . $servers[$server_id]['username'];
 	$postvars .= '&login_password=' . $servers[$server_id]['password'];
 
@@ -382,7 +393,7 @@ function proxyCactiRequest ($server_id, $graph_id)
 //	curl_setopt ($session, CURLOPT_VERBOSE, TRUE);
 
 	// Initial options up here so a specific type can override them
-	curl_setopt ($session, CURLOPT_FOLLOWLOCATION, FALSE); 
+	curl_setopt ($session, CURLOPT_FOLLOWLOCATION, FALSE);
 	curl_setopt ($session, CURLOPT_TIMEOUT, 10);
 	curl_setopt ($session, CURLOPT_RETURNTRANSFER, TRUE);
 	curl_setopt ($session, CURLOPT_URL, $url);
@@ -404,7 +415,7 @@ function proxyCactiRequest ($server_id, $graph_id)
 
 		// Get the cookies from the headers
 		preg_match('/Set-Cookie: ([^;]*)/i', $headers, $cookies);
-		array_shift($cookies);  // Remove 'Set-Cookie: ...' value			
+		array_shift($cookies);  // Remove 'Set-Cookie: ...' value
 		$cookie_header = implode(";", $cookies);
 		$_SESSION['CACTICOOKIE'][$cacti_url] = $cookie_header; // store for later use by this user
 
@@ -428,6 +439,44 @@ function proxyCactiRequest ($server_id, $graph_id)
 		header("Content-Type: {$ret['type']}");
 	if ($ret['size'] > 0)
 		header("Content-Length: {$ret['size']}");
+
+	echo $ret['contents'];
+}
+
+function proxyMuninRequest ($server_id, $graph)
+{
+    $object = spotEntity ('object', $server_id);
+    list ($host, $domain) = preg_split ("/\./", $object['dname'], 2);
+
+	$ret = array();
+	$servers = getMuninServers();
+	if (! array_key_exists ($server_id, $servers))
+		throw new InvalidRequestArgException ('server_id', $server_id);
+	$munin_url = $servers[$server_id]['base_url'];
+	$url = "${munin_url}/${domain}/${object['dname']}/${graph}-day.png";
+
+	$session = curl_init();
+
+	// Initial options up here so a specific type can override them
+	curl_setopt ($session, CURLOPT_FOLLOWLOCATION, FALSE);
+	curl_setopt ($session, CURLOPT_TIMEOUT, 10);
+	curl_setopt ($session, CURLOPT_RETURNTRANSFER, TRUE);
+	curl_setopt ($session, CURLOPT_URL, $url);
+
+	if (isset($_SESSION['MUNINCOOKIE'][$munin_url]))
+		curl_setopt ($session, CURLOPT_COOKIE, $_SESSION['MUNINCOOKIE'][$munin_url]);
+
+	// Request the image
+	$ret['contents'] = curl_exec ($session);
+	$ret['type'] = curl_getinfo ($session, CURLINFO_CONTENT_TYPE);
+	$ret['size'] = curl_getinfo ($session, CURLINFO_SIZE_DOWNLOAD);
+
+	curl_close ($session);
+
+	if ($ret['type'] != NULL)
+		header ("Content-Type: {$ret['type']}");
+	if ($ret['size'] > 0)
+		header ("Content-Length: {$ret['size']}");
 
 	echo $ret['contents'];
 }

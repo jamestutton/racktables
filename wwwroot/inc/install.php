@@ -103,7 +103,7 @@ function not_already_installed()
 // Check that we can write to configuration file.
 // If so, ask for DB connection paramaters and test
 // the connection. Neither save the parameters nor allow
-// going further until we succeed with the given 
+// going further until we succeed with the given
 // credentials.
 function init_config ()
 {
@@ -249,6 +249,9 @@ function init_config ()
 	fwrite ($conf, "\$pdo_dsn = '${pdo_dsn}';\n");
 	fwrite ($conf, "\$db_username = '" . $_REQUEST['mysql_username'] . "';\n");
 	fwrite ($conf, "\$db_password = '" . $_REQUEST['mysql_password'] . "';\n\n");
+	fwrite ($conf, "# Setting MySQL client buffer size may be required to make downloading work for\n");
+	fwrite ($conf, "# larger files, but it does not work with mysqlnd.\n");
+	fwrite ($conf, "# \$pdo_bufsize = 50 * 1024 * 1024;\n\n");
 	fwrite ($conf, <<<ENDOFTEXT
 
 \$user_auth_src = 'database';
@@ -356,7 +359,7 @@ function init_database_static ()
 		}
 	}
 	echo "<td>${nq}</td><td>${nerrs}</td></tr>\n";
-			
+
 	echo '</table>';
 	if (count ($errlist))
 	{
@@ -764,6 +767,24 @@ CREATE TABLE `MountOperation` (
   CONSTRAINT `MountOperation-FK-new_molecule_id` FOREIGN KEY (`new_molecule_id`) REFERENCES `Molecule` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE `MuninGraph` (
+  `object_id` int(10) unsigned NOT NULL,
+  `server_id` int(10) unsigned NOT NULL,
+  `graph` char(255) NOT NULL,
+  `caption`  char(255) DEFAULT NULL,
+  PRIMARY KEY (`object_id`,`server_id`,`graph`),
+  KEY `server_id` (`server_id`),
+  KEY `graph` (`graph`),
+  CONSTRAINT `MuninGraph-FK-server_id` FOREIGN KEY (`server_id`) REFERENCES `MuninServer` (`id`),
+  CONSTRAINT `MuninGraph-FK-object_id` FOREIGN KEY (`object_id`) REFERENCES `Object` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE `MuninServer` (
+  `id` int(10) unsigned NOT NULL auto_increment,
+  `base_url` char(255) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+
 CREATE TABLE `ObjectLog` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `object_id` int(10) unsigned NOT NULL,
@@ -917,21 +938,25 @@ CREATE TABLE `TagStorage` (
   `entity_realm` enum('file','ipv4net','ipv4rspool','ipv4vs','ipv6net','location','object','rack','user','vst') NOT NULL default 'object',
   `entity_id` int(10) unsigned NOT NULL,
   `tag_id` int(10) unsigned NOT NULL default '0',
+  `tag_is_assignable` enum('yes','no') NOT NULL DEFAULT 'yes',
   `user` char(64) DEFAULT NULL,
   `date` datetime DEFAULT NULL,
   UNIQUE KEY `entity_tag` (`entity_realm`,`entity_id`,`tag_id`),
   KEY `entity_id` (`entity_id`),
   KEY `TagStorage-FK-tag_id` (`tag_id`),
-  CONSTRAINT `TagStorage-FK-tag_id` FOREIGN KEY (`tag_id`) REFERENCES `TagTree` (`id`)
+  KEY `tag_id-tag_is_assignable` (`tag_id`,`tag_is_assignable`),
+  CONSTRAINT `TagStorage-FK-TagTree` FOREIGN KEY (`tag_id`, `tag_is_assignable`) REFERENCES `TagTree` (`id`, `is_assignable`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `TagTree` (
   `id` int(10) unsigned NOT NULL auto_increment,
   `parent_id` int(10) unsigned default NULL,
+  `is_assignable` enum('yes','no') NOT NULL DEFAULT 'yes',
   `tag` char(255) default NULL,
   PRIMARY KEY  (`id`),
   UNIQUE KEY `tag` (`tag`),
   KEY `TagTree-K-parent_id` (`parent_id`),
+  KEY `id-is_assignable` (`id`,`is_assignable`),
   CONSTRAINT `TagTree-K-parent_id` FOREIGN KEY (`parent_id`) REFERENCES `TagTree` (`id`)
 ) ENGINE=InnoDB;
 
@@ -976,7 +1001,7 @@ CREATE TABLE `VLANIPv4` (
   `domain_id` int(10) unsigned NOT NULL,
   `vlan_id` int(10) unsigned NOT NULL,
   `ipv4net_id` int(10) unsigned NOT NULL,
-  UNIQUE KEY `network-domain` (`ipv4net_id`,`domain_id`),
+  UNIQUE KEY `network-domain-vlan` (`ipv4net_id`,`domain_id`,`vlan_id`),
   KEY `VLANIPv4-FK-compound` (`domain_id`,`vlan_id`),
   CONSTRAINT `VLANIPv4-FK-compound` FOREIGN KEY (`domain_id`, `vlan_id`) REFERENCES `VLANDescription` (`domain_id`, `vlan_id`) ON DELETE CASCADE,
   CONSTRAINT `VLANIPv4-FK-ipv4net_id` FOREIGN KEY (`ipv4net_id`) REFERENCES `IPv4Network` (`id`) ON DELETE CASCADE
@@ -986,7 +1011,7 @@ CREATE TABLE `VLANIPv6` (
   `domain_id` int(10) unsigned NOT NULL,
   `vlan_id` int(10) unsigned NOT NULL,
   `ipv6net_id` int(10) unsigned NOT NULL,
-  UNIQUE KEY `network-domain` (`ipv6net_id`,`domain_id`),
+  UNIQUE KEY `network-domain-vlan` (`ipv6net_id`,`domain_id`,`vlan_id`),
   KEY `VLANIPv6-FK-compound` (`domain_id`,`vlan_id`),
   CONSTRAINT `VLANIPv6-FK-compound` FOREIGN KEY (`domain_id`, `vlan_id`) REFERENCES `VLANDescription` (`domain_id`, `vlan_id`) ON DELETE CASCADE,
   CONSTRAINT `VLANIPv6-FK-ipv6net_id` FOREIGN KEY (`ipv6net_id`) REFERENCES `IPv6Network` (`id`) ON DELETE CASCADE
@@ -1659,11 +1684,14 @@ INSERT INTO `Config` (varname, varvalue, vartype, emptyok, is_hidden, is_userdef
 ('SYNC_802Q_LISTSRC','','string','yes','no','no','List of VLAN switches sync is enabled on'),
 ('QUICK_LINK_PAGES','depot,ipv4space,rackspace','string','yes','no','yes','List of pages to dislay in quick links'),
 ('CACTI_LISTSRC','false','string','yes','no','no','List of object with Cacti graphs'),
+('MUNIN_LISTSRC','false','string','yes','no','no','List of object with Munin graphs'),
 ('VIRTUAL_OBJ_LISTSRC','1504,1505,1506,1507','string','no','no','no','List source: virtual objects'),
 ('DATETIME_ZONE','UTC','string','yes','no','yes','Timezone to use for displaying/calculating dates'),
 ('DATETIME_FORMAT','m/d/Y','string','no','no','yes','PHP date() format to use for date output'),
 ('SEARCH_DOMAINS','','string','yes','no','yes','DNS domain list (comma-separated) to search in FQDN attributes'),
 ('8021Q_EXTSYNC_LISTSRC','false','string','yes','no','no','List source: objects with extended 802.1Q sync'),
+('8021Q_MULTILINK_LISTSRC','false','string','yes','no','no','List source: IPv4/IPv6 networks allowing multiple VLANs from same domain'),
+('REVERSED_RACKS_LISTSRC', 'false', 'string', 'yes', 'no', 'no', 'List of racks with reversed (top to bottom) units order'),
 ('DB_VERSION','${db_version}','string','no','yes','no','Database version.');
 
 INSERT INTO `Script` VALUES ('RackCode','allow {\$userid_1}');

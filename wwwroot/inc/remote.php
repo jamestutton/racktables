@@ -4,41 +4,197 @@
 # framework. See accompanying file "COPYING" for the full copyright and
 # licensing information.
 
+# The array below maps availability of particular commands for each particular
+# device breed. Array values are functions implemented in deviceconfig.php, which
+# is not normally included until any of the functions is actually called.
+$breedfunc = array
+(
+	'ios12-getcdpstatus-main'  => 'ios12ReadCDPStatus',
+	'ios12-getlldpstatus-main' => 'ios12ReadLLDPStatus',
+	'ios12-get8021q-main'      => 'ios12ReadVLANConfig',
+	'ios12-get8021q-top'       => 'ios12ScanTopLevel',
+	'ios12-get8021q-readport'  => 'ios12PickSwitchportCommand',
+	'ios12-get8021q-readvlan'  => 'ios12PickVLANCommand',
+	'ios12-getportstatus-main' => 'ciscoReadInterfaceStatus',
+	'ios12-getmaclist-main'    => 'ios12ReadMacList',
+	'ios12-xlatepushq-main'    => 'ios12TranslatePushQueue',
+	'ios12-getallconf-main'    => 'ios12SpotConfigText',
+	'fdry5-get8021q-main'      => 'fdry5ReadVLANConfig',
+	'fdry5-get8021q-top'       => 'fdry5ScanTopLevel',
+	'fdry5-get8021q-readvlan'  => 'fdry5PickVLANSubcommand',
+	'fdry5-get8021q-readport'  => 'fdry5PickInterfaceSubcommand',
+	'fdry5-xlatepushq-main'    => 'fdry5TranslatePushQueue',
+	'fdry5-getallconf-main'    => 'fdry5SpotConfigText',
+	'vrp53-getlldpstatus-main' => 'vrp5xReadLLDPStatus',
+	'vrp53-get8021q-main'      => 'vrp53ReadVLANConfig',
+	'vrp53-get8021q-top'       => 'vrp53ScanTopLevel',
+	'vrp53-get8021q-readport'  => 'vrp53PickInterfaceSubcommand',
+	'vrp53-getportstatus-main' => 'vrpReadInterfaceStatus',
+	'vrp53-getmaclist-main'    => 'vrp53ReadMacList',
+	'vrp53-xlatepushq-main'    => 'vrp53TranslatePushQueue',
+	'vrp53-getallconf-main'    => 'vrp5xSpotConfigText',
+	'vrp55-getlldpstatus-main' => 'vrp5xReadLLDPStatus',
+	'vrp55-get8021q-main'      => 'vrp55Read8021QConfig',
+	'vrp55-getportstatus-main' => 'vrpReadInterfaceStatus',
+	'vrp55-getmaclist-main'    => 'vrp55ReadMacList',
+	'vrp55-xlatepushq-main'    => 'vrp55TranslatePushQueue',
+	'vrp55-getallconf-main'    => 'vrp5xSpotConfigText',
+	'nxos4-getcdpstatus-main'  => 'ios12ReadCDPStatus',
+	'nxos4-getlldpstatus-main' => 'nxos4ReadLLDPStatus',
+	'nxos4-get8021q-main'      => 'nxos4Read8021QConfig',
+	'nxos4-get8021q-top'       => 'nxos4ScanTopLevel',
+	'nxos4-get8021q-readport'  => 'nxos4PickSwitchportCommand',
+	'nxos4-get8021q-readvlan'  => 'nxos4PickVLANCommand',
+	'nxos4-getportstatus-main' => 'ciscoReadInterfaceStatus',
+	'nxos4-getmaclist-main'    => 'nxos4ReadMacList',
+	'nxos4-xlatepushq-main'    => 'nxos4TranslatePushQueue',
+	'nxos4-getallconf-main'    => 'nxos4SpotConfigText',
+	'dlink-get8021q-main'      => 'dlinkReadVLANConfig',
+	'dlink-get8021q-top'       => 'dlinkScanTopLevel',
+	'dlink-get8021q-pickvlan'  => 'dlinkPickVLANCommand',
+	'dlink-getportstatus-main' => 'dlinkReadInterfaceStatus',
+	'dlink-getmaclist-main'    => 'dlinkReadMacList',
+	'dlink-xlatepushq-main'    => 'dlinkTranslatePushQueue',
+	'linux-get8021q-main'      => 'linuxReadVLANConfig',
+	'linux-getportstatus-main' => 'linuxReadInterfaceStatus',
+	'linux-getmaclist-main'    => 'linuxReadMacList',
+	'linux-xlatepushq-main'    => 'linuxTranslatePushQueue',
+	'xos12-getlldpstatus-main' => 'xos12ReadLLDPStatus',
+	'xos12-get8021q-main'      => 'xos12Read8021QConfig',
+	'xos12-xlatepushq-main'    => 'xos12TranslatePushQueue',
+	'xos12-getallconf-main'    => 'xos12SpotConfigText',
+	'jun10-get8021q-main'      => 'jun10Read8021QConfig',
+	'jun10-xlatepushq-main'    => 'jun10TranslatePushQueue',
+	'jun10-getallconf-main'    => 'jun10SpotConfigText',
+	'ftos8-xlatepushq-main'    => 'ftos8TranslatePushQueue',
+	'ftos8-getlldpstatus-main' => 'ftos8ReadLLDPStatus',
+	'ftos8-getmaclist-main'    => 'ftos8ReadMacList',
+	'ftos8-getportstatus-main' => 'ftos8ReadInterfaceStatus',
+	'ftos8-get8021q-main'      => 'ftos8Read8021QConfig',
+	'ftos8-getallconf-main'    => 'ftos8SpotConfigText',
+	'air12-xlatepushq-main'    => 'air12TranslatePushQueue',
+	'air12-getallconf-main'    => 'ios12SpotConfigText',
+	'eos4-getallconf-main'     => 'eos4SpotConfigText',
+	'eos4-getmaclist-main'     => 'eos4ReadMacList',
+	'eos4-getportstatus-main'  => 'eos4ReadInterfaceStatus',
+	'eos4-getlldpstatus-main'  => 'eos4ReadLLDPStatus',
+	'eos4-get8021q-main'       => 'eos4Read8021QConfig',
+	'eos4-xlatepushq-main'     => 'eos4TranslatePushQueue',
+	'ros11-getallconf-main'    => 'ros11SpotConfigText',
+	'ros11-xlatepushq-main'    => 'ros11TranslatePushQueue',
+	'ros11-getlldpstatus-main' => 'ros11ReadLLDPStatus',
+	'ros11-getportstatus-main' => 'ros11ReadInterfaceStatus',
+	'ros11-getmaclist-main'    => 'ros11ReadMacList',
+	'ros11-get8021q-main'      => 'ros11Read8021QConfig',
+	'ros11-get8021q-scantop'   => 'ros11Read8021QScanTop',
+	'ros11-get8021q-vlandb'    => 'ros11Read8021QVLANDatabase',
+	'ros11-get8021q-readports' => 'ros11Read8021QPorts',
+	'iosxr4-xlatepushq-main'   => 'iosxr4TranslatePushQueue',
+	'iosxr4-getallconf-main'   => 'iosxr4SpotConfigText',
+	'ucs-xlatepushq-main'      => 'ucsTranslatePushQueue',
+	'ucs-getinventory-main'    => 'ucsReadInventory',
+);
+
+define ('MAX_GW_LOGSIZE', 1024*1024); // do not store more than 1 MB of log data
+
+function detectDeviceBreed ($object_id)
+{
+	$breed_by_swcode = array
+	(
+		251 => 'ios12',
+		252 => 'ios12',
+		254 => 'ios12',
+		963 => 'nxos4', // NX-OS 4.0
+		964 => 'nxos4', // NX-OS 4.1
+		1365 => 'nxos4', // NX-OS 4.2
+		1410 => 'nxos4', // NX-OS 5.0, seems compatible
+		1411 => 'nxos4', // NX-OS 5.1
+		1809 => 'nxos4', // NX-OS 5.2
+		1643 => 'nxos4', // NX-OS 6.0
+		1352 => 'xos12',
+		1360 => 'vrp53',
+		1361 => 'vrp55',
+		1369 => 'vrp55', // VRP versions 5.5 and 5.7 seem to be compatible
+		1363 => 'fdry5',
+		1367 => 'jun10', # 10S
+		1597 => 'jun10', # 10R
+		1598 => 'jun10', # 11R
+		1599 => 'jun10', # 12R
+		1594 => 'ftos8',
+		1673 => 'air12', # AIR IOS 12.3
+		1674 => 'air12', # AIR IOS 12.4
+		1675 => 'eos4',
+		1759 => 'iosxr4', # Cisco IOS XR 4.2
+		1786 => 'ros11', # Marvell ROS 1.1
+		242 => 'linux',
+		243 => 'linux',
+		1331 => 'linux',
+		1332 => 'linux',
+		1333 => 'linux',
+		1334 => 'linux',
+		1395 => 'linux',
+		1396 => 'linux',
+	);
+	for ($i = 225; $i <= 235; $i++)
+		$breed_by_swcode[$i] = 'linux';
+	for ($i = 418; $i <= 436; $i++)
+		$breed_by_swcode[$i] = 'linux';
+	for ($i = 1417; $i <= 1422; $i++)
+		$breed_by_swcode[$i] = 'linux';
+	$breed_by_hwcode = array();
+	for ($i = 589; $i <= 637; $i++)
+		$breed_by_hwcode[$i] = 'dlink';
+	$breed_by_mgmtcode = array (1788 => 'ucs');
+	foreach (getAttrValues ($object_id) as $record)
+		if ($record['id'] == 4 and array_key_exists ($record['key'], $breed_by_swcode))
+			return $breed_by_swcode[$record['key']];
+		elseif ($record['id'] == 2 and array_key_exists ($record['key'], $breed_by_hwcode))
+			return $breed_by_hwcode[$record['key']];
+		elseif ($record['id'] == 30 and array_key_exists ($record['key'], $breed_by_mgmtcode))
+			return $breed_by_mgmtcode[$record['key']];
+	return '';
+}
+
+function assertDeviceBreed ($object_id)
+{
+	if ('' == $breed = detectDeviceBreed ($object_id))
+		throw new RTGatewayError ('Cannot determine device breed');
+	return $breed;
+}
+
+function validBreedFunction ($breed, $command)
+{
+	global $breedfunc;
+	return array_key_exists ("${breed}-${command}-main", $breedfunc);
+}
+
+function assertBreedFunction ($breed, $command)
+{
+	global $breedfunc;
+	if (! validBreedFunction ($breed, $command))
+		throw new RTGatewayError ("unsupported command '${command}' for breed '${breed}'");
+	return $breedfunc["${breed}-${command}-main"];
+}
+
 function queryDevice ($object_id, $command)
 {
-	$breed = detectDeviceBreed ($object_id);
-	if (empty ($breed))
-		throw new RTGatewayError ("Can not determine device breed");
-
-	if (! validBreedFunction ($breed, $command))
-		throw new RTGatewayError ("unsupported command '$command' for the breed '$breed'");
-
+	$breed = assertDeviceBreed ($object_id);
+	$funcname = assertBreedFunction ($breed, $command);
 	require_once 'deviceconfig.php';
-	global $breedfunc;
-	if (! is_callable ($breedfunc["$breed-$command-main"]))
-		throw new RTGatewayError ("undeclared function '" . $breedfunc["$breed-$command-main"] . "'");
+	if (! is_callable ($funcname))
+		throw new RTGatewayError ("undeclared function '${funcname}'");
 	$query = translateDeviceCommands ($object_id, array (array ('opcode' => $command)));
-	if ($command == 'xlatepushq')
-		return $query;
-	else
-	{
-		$answer = queryTerminal ($object_id, $query, FALSE);
-		return $breedfunc["$breed-$command-main"] ($answer);
-	}
+	return $command == 'xlatepushq' ? $query : $funcname (queryTerminal ($object_id, $query, FALSE));
 }
 
 function translateDeviceCommands ($object_id, $crq, $vlan_names = NULL)
 {
+	$breed = assertDeviceBreed ($object_id);
+	$funcname = assertBreedFunction ($breed, 'xlatepushq');
 	require_once 'deviceconfig.php';
-	$breed = detectDeviceBreed ($object_id);
-	if (empty ($breed))
-		throw new RTGatewayError ("Can not determine device breed");
-
-	if (! validBreedFunction ($breed, 'xlatepushq'))
-		throw new RTGatewayError ("unsupported command 'xlatepushq' for the breed '$breed'");
-
-	global $breedfunc;
-	return $breedfunc["$breed-xlatepushq-main"] ($object_id, $crq, $vlan_names);
+	if (! is_callable ($funcname))
+		throw new RTGatewayError ("undeclared function '${funcname}'");
+	return $funcname ($object_id, $crq, $vlan_names);
 }
 
 // This function returns a text output received from the device
@@ -73,7 +229,7 @@ function queryTerminal ($object_id, $commands, $tolerate_remote_errors = TRUE)
 			break;
 		case 'nxos4':
 			$protocol = 'telnet';
-			$prompt = '[>:#] $';
+			$prompt = '(^([Ll]ogin|[Pp]assword):|[>#]) $';
 			break;
 		case 'xos12':
 			$protocol = 'telnet';
@@ -225,6 +381,8 @@ function queryTerminal ($object_id, $commands, $tolerate_remote_errors = TRUE)
 			else
 				$params[$param_name] = $settings[$setting_name];
 
+	callHook ('alterTerminalParams', $object_id, $tolerate_remote_errors, array (&$settings['protocol']), array (&$params));
+
 	$ret_code = callScript ($settings['protocol'], $params, $commands, $out, $errors);
 	if ($settings['protocol'] != 'ssh' || ! $tolerate_remote_errors)
 	{
@@ -233,7 +391,7 @@ function queryTerminal ($object_id, $commands, $tolerate_remote_errors = TRUE)
 		elseif ($ret_code !== 0)
 			throw new RTGatewayError ("${settings['protocol']} error: result code $ret_code");
 	}
-	elseif (! empty ($errors)) // ssh and not tolerate and non-empty $errors
+	elseif (! empty ($errors)) // ssh and tolerate and non-empty $errors
 		foreach (explode ("\n", $errors) as $line)
 			if (strlen ($line))
 				showWarning ("${settings['protocol']} ${settings['hostname']}: $line");
@@ -242,15 +400,27 @@ function queryTerminal ($object_id, $commands, $tolerate_remote_errors = TRUE)
 
 function callScript ($gwname, $params, $in, &$out, &$errors)
 {
-	global $racktables_gwdir, $local_gwdir;
-	if (isset ($local_gwdir) && file_exists ("$local_gwdir/$gwname"))
-		$dir = $local_gwdir;
-	elseif (isset ($racktables_gwdir) && file_exists ("$racktables_gwdir/$gwname"))
-		$dir = $racktables_gwdir;
-	if (! isset ($dir))
-		throw new RTGatewayError ("Could not find the gateway file called '$gwname'");
+	global $racktables_gwdir, $local_gwdir, $gateway_log;
+	if (isset ($gateway_log))
+		$gateway_log = '';
 
-	$cmd_line = "./$gwname";
+	$cwd = NULL;
+	if ('/' === substr ($gwname, 0, 1))
+		// absolute path to executable
+		$binary = $gwname;
+	else
+	{
+		// path relative to one of RackTables' gwdirs
+		if (isset ($local_gwdir) && file_exists ("$local_gwdir/$gwname"))
+			$cwd = $local_gwdir;
+		elseif (isset ($racktables_gwdir) && file_exists ("$racktables_gwdir/$gwname"))
+			$cwd = $racktables_gwdir;
+		if (! isset ($cwd))
+			throw new RTGatewayError ("Could not find the gateway file called '$gwname'");
+		$binary = "./$gwname";
+	}
+
+	$cmd_line = $binary;
 	foreach ($params as $key => $value)
 	{
 		if (! isset ($value))
@@ -267,7 +437,7 @@ function callScript ($gwname, $params, $in, &$out, &$errors)
 	}
 
 	$pipes = array();
-	$child = proc_open 
+	$child = proc_open
 	(
 		$cmd_line,
 		array (
@@ -276,10 +446,10 @@ function callScript ($gwname, $params, $in, &$out, &$errors)
 			2 => array ('pipe', 'w'),
 		),
 		$pipes,
-		$dir
+		$cwd
 	);
 	if (! is_resource ($child))
-		throw new RTGatewayError ("cant execute $dir/$gwname");
+		throw new RTGatewayError ("cant execute $binary");
 
 	$buff_size = 4096;
 	$write_left = array ($pipes[0]);
@@ -294,7 +464,11 @@ function callScript ($gwname, $params, $in, &$out, &$errors)
 		foreach ($write_fd as $fd)
 		{
 			$written = fwrite ($fd, $in, $buff_size);
+			// log all communication data into global var
+			if ($written != 0 && isset ($gateway_log))
+				$gateway_log .= preg_replace ('/^/m', '> ', substr ($in, 0, $written));
 			$in = substr ($in, $written);
+
 			if ($written == 0 || empty ($in))
 			{
 				// close input fd
@@ -313,6 +487,10 @@ function callScript ($gwname, $params, $in, &$out, &$errors)
 			}
 			else
 			{
+				// log all communication data into global var
+				if (isset ($gateway_log))
+					$gateway_log .= $str;
+
 				if ($fd == $pipes[1])
 					$out .= $str;
 				elseif ($fd == $pipes[2])
@@ -322,8 +500,12 @@ function callScript ($gwname, $params, $in, &$out, &$errors)
 
 		$write_fd = $write_left;
 		$read_fd = $read_left;
-	}
 
+		// limit the size of gateway_log
+		if (isset ($gateway_log) && strlen ($gateway_log) > MAX_GW_LOGSIZE * 1.1)
+			$gateway_log = substr ($gateway_log, -MAX_GW_LOGSIZE);
+
+	}
 	return proc_close ($child);
 }
 
@@ -345,7 +527,7 @@ function setDevice8021QConfig ($object_id, $pseudocode, $vlan_names)
 	$commands = translateDeviceCommands ($object_id, $pseudocode, $vlan_names);
 	$breed = detectDeviceBreed ($object_id);
 	$output = queryTerminal ($object_id, $commands, FALSE);
-	
+
 	// throw an exception if Juniper did not allow to enter config mode or to commit changes
 	if ($breed == 'jun10')
 	{

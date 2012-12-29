@@ -192,6 +192,29 @@ $opspec_list['object-cacti-del'] = array
 		array ('url_argname' => 'graph_id', 'assertion' => 'uint'),
 	),
 );
+$opspec_list['object-munin-add'] = array
+(
+	'table' => 'MuninGraph',
+	'action' => 'INSERT',
+	'arglist' => array
+	(
+		array ('url_argname' => 'object_id', 'assertion' => 'uint'),
+		array ('url_argname' => 'server_id', 'assertion' => 'uint'),
+		array ('url_argname' => 'graph', 'assertion' => 'string'),
+		array ('url_argname' => 'caption', 'assertion' => 'string0'),
+	),
+);
+$opspec_list['object-munin-del'] = array
+(
+	'table' => 'MuninGraph',
+	'action' => 'DELETE',
+	'arglist' => array
+	(
+		array ('url_argname' => 'object_id', 'assertion' => 'uint'),
+		array ('url_argname' => 'server_id', 'assertion' => 'uint'),
+		array ('url_argname' => 'graph', 'assertion' => 'string'),
+	),
+);
 $opspec_list['ipv4net-properties-editRange'] = array
 (
 	'table' => 'IPv4Network',
@@ -408,6 +431,7 @@ $opspec_list['tagtree-edit-createTag'] = array
 	(
 		array ('url_argname' => 'tag_name', 'table_colname' => 'tag', 'assertion' => 'tag'),
 		array ('url_argname' => 'parent_id', 'assertion' => 'uint0', 'if_empty' => 'NULL'),
+		array ('url_argname' => 'is_assignable', 'assertion' => 'enum/yesno'),
 	),
 );
 $opspec_list['tagtree-edit-destroyTag'] = array
@@ -427,6 +451,7 @@ $opspec_list['tagtree-edit-updateTag'] = array
 	(
 		array ('url_argname' => 'tag_name', 'table_colname' => 'tag', 'assertion' => 'tag'),
 		array ('url_argname' => 'parent_id', 'assertion' => 'uint0', 'if_empty' => 'NULL'),
+		array ('url_argname' => 'is_assignable', 'assertion' => 'enum/yesno'),
 	),
 	'where_arglist' => array
 	(
@@ -577,6 +602,37 @@ $opspec_list['cacti-servers-upd'] = array
 		array ('url_argname' => 'base_url', 'assertion' => 'string'),
 		array ('url_argname' => 'username', 'assertion' => 'string0'),
 		array ('url_argname' => 'password', 'assertion' => 'string0'),
+	),
+	'where_arglist' => array
+	(
+		array ('url_argname' => 'id', 'assertion' => 'uint'),
+	),
+);
+$opspec_list['munin-servers-add'] = array
+(
+	'table' => 'MuninServer',
+	'action' => 'INSERT',
+	'arglist' => array
+	(
+		array ('url_argname' => 'base_url', 'assertion' => 'string')
+	),
+);
+$opspec_list['munin-servers-del'] = array
+(
+	'table' => 'MuninServer',
+	'action' => 'DELETE',
+	'arglist' => array
+	(
+		array ('url_argname' => 'id', 'assertion' => 'uint'),
+	),
+);
+$opspec_list['munin-servers-upd'] = array
+(
+	'table' => 'MuninServer',
+	'action' => 'UPDATE',
+	'set_arglist' => array
+	(
+		array ('url_argname' => 'base_url', 'assertion' => 'string'),
 	),
 	'where_arglist' => array
 	(
@@ -808,14 +864,14 @@ function addBulkPorts ()
 	assertStringArg ('port_label', TRUE);
 	assertUIntArg ('port_numbering_start', TRUE);
 	assertUIntArg ('port_numbering_count');
-	
+
 	$object_id = $_REQUEST['object_id'];
 	$port_name = $_REQUEST['port_name'];
 	$port_type_id = $_REQUEST['port_type_id'];
 	$port_label = $_REQUEST['port_label'];
 	$port_numbering_start = $_REQUEST['port_numbering_start'];
 	$port_numbering_count = $_REQUEST['port_numbering_count'];
-	
+
 	$added_count = $error_count = 0;
 	if(strrpos($port_name, "%u") === false )
 		$port_name .= '%u';
@@ -1085,7 +1141,7 @@ function updateObjectAllocation ()
 		$newMolecule = getMoleculeForObject ($object_id);
 		usePreparedInsertBlade
 		(
-			'MountOperation', 
+			'MountOperation',
 			array
 			(
 				'object_id' => $object_id,
@@ -1387,7 +1443,7 @@ function resetUIConfig()
 	setConfigVar ('PREVIEW_IMAGE_MAXPXS', '320');
 	setConfigVar ('VENDOR_SIEVE', '');
 	setConfigVar ('IPV4LB_LISTSRC', 'false');
-	setConfigVar ('IPV4OBJ_LISTSRC','{$typeid_4} or {$typeid_7} or {$typeid_8} or {$typeid_12} or {$typeid_445} or {$typeid_447} or {$typeid_798} or {$typeid_1504} or {\$typeid_1507} or {\$typeid_1788}');
+	setConfigVar ('IPV4OBJ_LISTSRC','{$typeid_4} or {$typeid_7} or {$typeid_8} or {$typeid_12} or {$typeid_445} or {$typeid_447} or {$typeid_798} or {$typeid_1504} or {$typeid_1507} or {$typeid_1787}');
 	setConfigVar ('IPV4NAT_LISTSRC','{$typeid_4} or {$typeid_7} or {$typeid_8} or {$typeid_798}');
 	setConfigVar ('ASSETWARN_LISTSRC','{$typeid_4} or {$typeid_7} or {$typeid_8}');
 	setConfigVar ('NAMEWARN_LISTSRC','{$typeid_4} or {$typeid_7} or {$typeid_8}');
@@ -1431,11 +1487,14 @@ function resetUIConfig()
 	setConfigVar ('SYNC_802Q_LISTSRC', '');
 	setConfigVar ('QUICK_LINK_PAGES', 'depot,ipv4space,rackspace');
 	setConfigVar ('CACTI_LISTSRC', 'false');
+	setConfigVar ('MUNIN_LISTSRC', 'false');
 	setConfigVar ('VIRTUAL_OBJ_LISTSRC', '1504,1505,1506,1507');
 	setConfigVar ('DATETIME_ZONE', 'UTC');
 	setConfigVar ('DATETIME_FORMAT', 'm/d/Y');
 	setConfigVar ('SEARCH_DOMAINS', '');
 	setConfigVar ('8021Q_EXTSYNC_LISTSRC', 'false');
+	setConfigVar ('8021Q_MULTILINK_LISTSRC', 'false');
+	setConfigVar ('REVERSED_RACKS_LISTSRC', 'false');
 	return showFuncMessage (__FUNCTION__, 'OK');
 }
 
@@ -1667,12 +1726,10 @@ function deleteRSPool ()
 
 $msgcode['importPTRData']['OK'] = 26;
 $msgcode['importPTRData']['ERR'] = 141;
-// FIXME: check, that each submitted address belongs to the prefix we
-// are operating on.
 function importPTRData ()
 {
+	$net = spotEntity ('ipv4net', getBypassValue());
 	assertUIntArg ('addrcount');
-	assertUIntArg ('pg');
 	$nbad = $ngood = 0;
 	for ($i = 1; $i <= $_REQUEST['addrcount']; $i++)
 	{
@@ -1686,16 +1743,22 @@ function importPTRData ()
 		$rsvd = 'no';
 		if ($_REQUEST["rsvd_${i}"] == 'yes')
 			$rsvd = 'yes';
-		if (updateV4Address ($ip_bin, $_REQUEST["descr_${i}"], $rsvd) == '')
+		try
+		{
+			if (! ip_in_range ($ip_bin, $net))
+				throw new InvalidArgException ('ip_bin', $ip_bin);
+			updateAddress ($ip_bin, $_REQUEST["descr_${i}"], $rsvd);
 			$ngood++;
-		else
+		}
+		catch (RackTablesError $e)
+		{
 			$nbad++;
+		}
 	}
 	if (!$nbad)
-		showFuncMessage (__FUNCTION__, 'OK', array ($ngood));
+		return showFuncMessage (__FUNCTION__, 'OK', array ($ngood));
 	else
-		showFuncMessage (__FUNCTION__, 'ERR', array ($nbad, $ngood));
-	return buildRedirectURL (NULL, NULL, array ('pg' => $_REQUEST['pg']));
+		return showFuncMessage (__FUNCTION__, 'ERR', array ($nbad, $ngood));
 }
 
 $msgcode['generateAutoPorts']['OK'] = 21;
@@ -1785,72 +1848,6 @@ function saveRackCode ()
 	return showFuncMessage (__FUNCTION__, 'OK');
 }
 
-$msgcode['setPortVLAN']['ERR'] = 164;
-// This handler's context is pre-built, but not authorized. It is assumed, that the
-// handler will take existing context and before each commit check authorization
-// on the base chain plus necessary context added.
-function setPortVLAN ()
-{
-	assertUIntArg ('portcount');
-	try
-	{
-		$data = getSwitchVLANs ($_REQUEST['object_id']);
-	}
-	catch (RTGatewayError $re)
-	{
-		return showFuncMessage (__FUNCTION__, 'ERR', array ($re->getMessage()));
-	}
-	list ($vlanlist, $portlist) = $data;
-	// Here we just build up 1 set command for the gateway with all of the ports
-	// included. The gateway is expected to filter unnecessary changes silently
-	// and to provide a list of responses with either error or success message
-	// for each of the rest.
-	$nports = $_REQUEST['portcount'];
-	$prefix = 'set ';
-	$setcmd = '';
-	for ($i = 0; $i < $nports; $i++)
-	{
-		genericAssertion ('portname_' . $i, 'string');
-		genericAssertion ('vlanid_' . $i, 'string');
-		if ($_REQUEST['portname_' . $i] != $portlist[$i]['portname'])
-			throw new InvalidRequestArgException ('portname_' . $i, $_REQUEST['portname_' . $i], 'expected to be ' . $portlist[$i]['portname']);
-		if
-		(
-			$_REQUEST['vlanid_' . $i] == $portlist[$i]['vlanid'] ||
-			$portlist[$i]['vlanid'] == 'TRUNK'
-		)
-			continue;
-		$portname = $_REQUEST['portname_' . $i];
-		$oldvlanid = $portlist[$i]['vlanid'];
-		$newvlanid = $_REQUEST['vlanid_' . $i];
-		if
-		(
-			!permitted (NULL, NULL, NULL, array (array ('tag' => '$fromvlan_' . $oldvlanid), array ('tag' => '$vlan_' . $oldvlanid))) or
-			!permitted (NULL, NULL, NULL, array (array ('tag' => '$tovlan_' . $newvlanid), array ('tag' => '$vlan_' . $newvlanid)))
-		)
-		{
-			showOneLiner (159, array ($portname, $oldvlanid, $newvlanid));
-			continue;
-		}
-		$setcmd .= $prefix . $portname . '=' . $newvlanid;
-		$prefix = ';';
-	}
-	// Feed the gateway and interpret its (non)response.
-	if ($setcmd == '')
-		showOneLiner (201);
-	else
-	{
-		try
-		{
-			setSwitchVLANs ($_REQUEST['object_id'], $setcmd); // shows messages by itself
-		}
-		catch (RTGatewayError $e)
-		{
-			showFuncMessage (__FUNCTION__, 'ERR', array ($e->getMessage()));
-		}
-	}
-}
-
 function submitSLBConfig ()
 {
 	showNotice ("You should redefine submitSLBConfig ophandler in your local extension to install SLB config");
@@ -1861,7 +1858,7 @@ function addLocation ()
 {
 	assertUIntArg ('parent_id', TRUE);
 	assertStringArg ('name');
-	
+
 	$location_id = commitAddObject ($_REQUEST['name'], NULL, 1562, NULL);
 	if ($_REQUEST['parent_id'])
 		commitLinkEntities ('location', $_REQUEST['parent_id'], 'location', $location_id);
@@ -2629,28 +2626,35 @@ function resolve8021QConflicts ()
 	return showFuncMessage (__FUNCTION__, 'OK', array ($ndone));
 }
 
-$msgcode['create8021QPortConfig']['OK'] = 48;
-function create8021QPortConfig()
+function update8021QPortList()
 {
+	genericAssertion ('ports', 'array');
+	$enabled = $disabled = 0;
 	global $sic;
-	genericAssertion ('portname', 'string');
 	$default_port = array
 	(
 		'mode' => 'access',
 		'allowed' => array (VLAN_DFL_ID),
 		'native' => VLAN_DFL_ID,
 	);
-	add8021QPort (getBypassValue(), $sic['portname'], $default_port);
-	showFuncMessage (__FUNCTION__, 'OK');
-}
-
-$msgcode['destroy8021QPortConfig']['OK'] = 49;
-function destroy8021QPortConfig()
-{
-	global $sic;
-	genericAssertion ('portname', 'string');
-	del8021QPort (getBypassValue(), $sic['portname']);
-	showFuncMessage (__FUNCTION__, 'OK');
+	foreach ($sic['ports'] as $line)
+		if (preg_match ('/^enable (.+)$/', $line, $m))
+		{
+			add8021QPort (getBypassValue(), $m[1], $default_port);
+			$enabled++;
+		}
+		elseif (preg_match ('/^disable (.+)$/', $line, $m))
+		{
+			del8021QPort (getBypassValue(), $m[1]);
+			$disabled++;
+		}
+		else
+			throw new InvalidRequestArgException ('ports[]', $line, 'malformed array item');
+	# $enabled + $disabled > 0
+	if ($enabled)
+		showSuccess ("enabled 802.1Q for ${enabled} port(s)");
+	if ($disabled)
+		showSuccess ("disabled 802.1Q for ${disabled} port(s)");
 }
 
 $msgcode['cloneVST']['OK'] = 48;
@@ -2733,7 +2737,7 @@ function importDPData()
 			if (! isset ($params['a_id']) || ! isset ($params['b_id']) ||
 				! intval ($params['a_id']) || ! intval ($params['b_id']))
 				throw new InvalidArgException ("ports_${i}", $_REQUEST["ports_${i}"], "can not unpack port ids");
-			
+
 			$porta = getPortInfo ($params['a_id']);
 			$portb = getPortInfo ($params['b_id']);
 			if
@@ -2748,7 +2752,7 @@ function importDPData()
 			}
 			$oif_a = intval (@$params['a_oif']); // these parameters are optional
 			$oif_b = intval (@$params['b_oif']);
-			
+
 			$dbxlink->beginTransaction();
 			try
 			{
@@ -2803,7 +2807,7 @@ function saveQuickLinks()
 	genericAssertion ('page_list', 'array');
 	if (is_array ($_REQUEST['page_list']))
 	{
-		setUserConfigVar ('QUICK_LINK_PAGES', implode(',', $_REQUEST['page_list']));	
+		setUserConfigVar ('QUICK_LINK_PAGES', implode(',', $_REQUEST['page_list']));
 		showSuccess ('Quick links list is saved');
 	}
 }
@@ -2955,7 +2959,7 @@ function clearVlan()
 {
 	assertStringArg ('vlan_ck');
 	list ($vdom_id, $vlan_id) = decodeVLANCK ($_REQUEST['vlan_ck']);
-	
+
 	$n_cleared = 0;
 	foreach (getVLANConfiguredPorts ($_REQUEST['vlan_ck']) as $object_id => $portnames)
 	{
