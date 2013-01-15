@@ -1605,6 +1605,7 @@ function getAllIPv4Allocations ()
 		"Object.name as object_name, ".
 		"IPv4Allocation.name as name, ".
 		"IPv4Allocation.type as type, ".
+		"IPv4Allocation.vrf_id as vrf_id, ".
 		"INET_NTOA(ip) as ip ".
 		"from IPv4Allocation join Object on id=object_id "
 	);
@@ -1801,12 +1802,12 @@ function getObjectIPv4AllocationList ($object_id)
 	$ret = array();
 	$result = usePreparedSelectBlade
 	(
-		'SELECT name AS osif, type, ip FROM IPv4Allocation ' .
+		'SELECT name AS osif, type, ip, vrf_id FROM IPv4Allocation ' .
 		'WHERE object_id = ?',
 		array ($object_id)
 	);
 	while ($row = $result->fetch (PDO::FETCH_ASSOC))
-		$ret[ip4_int2bin ($row['ip'])] = array ('osif' => $row['osif'], 'type' => $row['type']);
+		$ret[ip4_int2bin ($row['ip'])] = array ('osif' => $row['osif'], 'type' => $row['type'], 'vrf_id' => $row['vrf_id']);
 	return $ret;
 }
 
@@ -1934,7 +1935,7 @@ function scanIPv4Space ($pairlist)
 
 	// 2. check for allocations
 	$query =
-		"select ip, object_id, name, type " .
+		"select ip, object_id, name, type, vrf_id  " .
 		"from IPv4Allocation where ${whereexpr2} order by type";
 	$result = usePreparedSelectBlade ($query, $qparams);
 	// release DBX early to avoid issues with nested spotEntity() calls
@@ -1952,6 +1953,7 @@ function scanIPv4Space ($pairlist)
 			'name' => $row['name'],
 			'object_id' => $row['object_id'],
 			'object_name' => $oinfo['dname'],
+			'vrf_id' => $oinfo['vrf_id'],
 		);
 	}
 
@@ -2166,7 +2168,9 @@ function scanIPv6Space ($pairlist)
 	return $ret;
 }
 
-function bindIPToObject ($ip_bin, $object_id = 0, $name = '', $type = '')
+
+// Made VRF Aware 
+function bindIPToObject ($ip_bin, $object_id = 0, $name = '', $type = '', $vrf_id = 1)
 {
 	switch (strlen ($ip_bin))
 	{
@@ -2186,18 +2190,19 @@ function bindIPToObject ($ip_bin, $object_id = 0, $name = '', $type = '')
 	// release IP reservation and/or comment if configured
 	$release = getConfigVar ('IPV4_AUTO_RELEASE');
 	if ($release >= 2)
-		usePreparedExecuteBlade ("DELETE FROM $table2 WHERE ip = ?", array ($db_ip));
+		usePreparedExecuteBlade ("DELETE FROM $table2 WHERE ip = ? AND vrf_id = ? ", array ($db_ip,$vrf_id));
 	elseif ($release >= 1)
-		usePreparedExecuteBlade ("UPDATE $table2 SET reserved = 'no' WHERE ip = ?", array ($db_ip));
+		usePreparedExecuteBlade ("UPDATE $table2 SET reserved = 'no' WHERE ip = ? AND vrf_id = ? ", array ($db_ip,$vrf_id));
 
 	usePreparedInsertBlade
 	(
 		$table,
-		array ('ip' => $db_ip, 'object_id' => $object_id, 'name' => $name, 'type' => $type)
+		array ('ip' => $db_ip, 'object_id' => $object_id, 'name' => $name, 'type' => $type, 'vrf_id' => $vrf_id)
 	);
 	// store history line
 	$cell = spotEntity ('object', $object_id);
 	setDisplayedName ($cell);
+	// Revisit needs to be made VRF Aware
 	addIPLogEntry ($ip_bin, "Binded with ${cell['dname']}, ifname=$name");
 }
 
@@ -2379,17 +2384,17 @@ function updateV6Address ($ip_bin, $name = '', $reserved = 'no', $comment = '')
 	return updateAddress ($ip_bin, $name, $reserved, $comment);
 }
 
-function updateIPBond ($ip_bin, $object_id=0, $name='', $type='')
+function updateIPBond ($ip_bin, $object_id=0, $name='', $type='', $vrf_id = 1)
 {
 	switch (strlen ($ip_bin))
 	{
-		case 4:  return updateIPv4Bond ($ip_bin, $object_id, $name, $type);
+		case 4:  return updateIPv4Bond ($ip_bin, $object_id, $name, $type, $vrf_id);
 		case 16: return updateIPv6Bond ($ip_bin, $object_id, $name, $type);
 		default: throw new InvalidArgException ('ip_bin', $ip_bin, "Invalid binary IP");
 	}
 }
 
-function updateIPv4Bond ($ip_bin, $object_id=0, $name='', $type='')
+function updateIPv4Bond ($ip_bin, $object_id=0, $name='', $type='', $vrf_id = 1)
 {
 	usePreparedUpdateBlade
 	(
@@ -2398,11 +2403,13 @@ function updateIPv4Bond ($ip_bin, $object_id=0, $name='', $type='')
 		(
 			'name' => $name,
 			'type' => $type,
+			'vrf_id' => $vrf_id,
 		),
 		array
 		(
 			'ip' => ip4_bin2db ($ip_bin),
 			'object_id' => $object_id,
+			//VRF Revisit as not handling case where same object has same ip in different vrfs need old vrf in where clause
 		)
 	);
 }
@@ -2426,7 +2433,7 @@ function updateIPv6Bond ($ip_bin, $object_id=0, $name='', $type='')
 }
 
 
-function unbindIPFromObject ($ip_bin, $object_id)
+function unbindIPFromObject ($ip_bin, $object_id,$vrf_id)
 {
 	switch (strlen ($ip_bin))
 	{
@@ -2444,22 +2451,23 @@ function unbindIPFromObject ($ip_bin, $object_id)
 	$n_deleted = usePreparedDeleteBlade
 	(
 		$table,
-		array ('ip' => $db_ip, 'object_id' => $object_id)
+		array ('ip' => $db_ip, 'object_id' => $object_id, 'vrf_id' => $vrf_id)
 	);
 	if ($n_deleted)
 	{
 		// store history line
 		$cell = spotEntity ('object', $object_id);
 		setDisplayedName ($cell);
+		//Make VRF Aware
 		addIPLogEntry ($ip_bin, "Removed from ${cell['dname']}");
 	}
 }
 
-function unbindIPv4FromObject ($ip_bin, $object_id)
+function unbindIPv4FromObject ($ip_bin, $object_id, $vrf_id)
 {
 	if (strlen ($ip_bin) != 4)
 		throw new InvalidArgException ('ip_bin', $ip_bin, "Invalid binary IP");
-	return unbindIPFromObject ($ip_bin, $object_id);
+	return unbindIPFromObject ($ip_bin, $object_id,$vrf_id);
 }
 
 function unbindIPv6FromObject ($ip_bin, $object_id)
@@ -4501,6 +4509,20 @@ function getExistingPortTypeOptions ($port_id)
 		array ($port_id)
 	);
 	return reduceSubarraysToColumn (reindexByID ($result->fetchAll (PDO::FETCH_ASSOC), 'oif_id'), 'oif_name');
+}
+
+
+// Return a set of options for a plain SELECT Containing all availabe VRFs from Dictionary
+function getExistingVRFOptions ($port_id)
+{
+	$result = usePreparedSelectBlade
+	(
+		'SELECT id, name ' .
+		'FROM VRF ' .
+		'ORDER BY name',
+		array ()
+	);
+	return reduceSubarraysToColumn (reindexByID ($result->fetchAll (PDO::FETCH_ASSOC), 'id'), 'name');
 }
 
 function getPortTypeUsageStatistics()

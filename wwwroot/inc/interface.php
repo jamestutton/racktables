@@ -1536,7 +1536,7 @@ function renderPortsForObject ($object_id)
 
 function renderIPForObject ($object_id)
 {
-	function printNewItemTR ($default_type)
+	function printNewItemTR ($default_type,$default_vrf_id = 1)
 	{
 		global $aat;
 		printOpFormIntro ('add');
@@ -1549,6 +1549,14 @@ function renderIPForObject ($object_id)
 			echo "<td colspan=2>&nbsp;</td>"; // network, routed by
 		echo '<td>';
 		printSelect ($aat, array ('name' => 'bond_type', 'tabindex' => 102), $default_type); // type
+		
+		//Add A VRF Dropdown to the IP Form
+		echo '<td>';
+		echo '<label>' . '' . ' ';
+		printSelect (getExistingVRFOptions (0), array ('name' => 'bond_vrf'), $default_vrf_id);
+		echo '</label>';
+		echo '</td>';
+		
 		echo "</td><td>&nbsp;</td><td>"; // misc
 		printImageHREF ('add', 'allocate', TRUE, 103); // right btn
 		echo "</td></tr></form>";
@@ -1565,6 +1573,8 @@ function renderIPForObject ($object_id)
 		echo '<th>routed by</th>';
 	}
 	echo '<th>type</th>';
+	//Add VRF Header to Columns
+	echo '<th>vrf</th>';
 	echo '<th>misc</th>';
 	echo '<th>&nbsp</th>';
 	echo '</tr>';
@@ -1600,6 +1610,17 @@ function renderIPForObject ($object_id)
 			$alloc_list .= $rendered_alloc['td_routed_by'];
 		}
 		$alloc_list .= '<td>' . getSelect ($aat, array ('name' => 'bond_type'), $alloc['type']) . "</td>";
+		
+		
+		//Add A VRF Dropdown to the IP Form
+		$alloc_list .=  '<td>';
+		$alloc_list .=  '<label>' . '' . ' ';
+		$alloc_list .=  getSelect (getExistingVRFOptions (0), array ('name' => 'bond_vrf'), $alloc['vrf_id']);
+		$alloc_list .=  '</label>';
+		$alloc_list .=  '</td>';
+		
+		
+		
 		$alloc_list .= $rendered_alloc['td_peers'];
 		$alloc_list .= "<td>" .getImageHREF ('save', 'Save changes', TRUE) . "</td>";
 
@@ -1610,7 +1631,8 @@ function renderIPForObject ($object_id)
 
 	if ($list_on_top = (getConfigVar ('ADDNEW_AT_TOP') != 'yes'))
 		echo $alloc_list;
-	printNewItemTR ($most_popular_type);
+		
+	printNewItemTR ($most_popular_type,2);
 	if (! $list_on_top)
 		echo $alloc_list;
 
