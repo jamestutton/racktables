@@ -1524,7 +1524,9 @@ function fixContext ($target = NULL)
 		if ($target['realm'] != 'user')
 			$auto_tags = array_merge ($auto_tags, $target['atags']);
 	}
-	elseif ($pageno == 'ipaddress' && $net = spotNetworkByIP (getBypassValue()))
+	//VRF Fix Needed to pass correct VRF in this context
+	
+	elseif ($pageno == 'ipaddress' && $net = spotNetworkByIP (getBypassValue(),1))
 	{
 		// IP addresses inherit context tags from their parent networks
 		$target_given_tags = $net['etags'];
@@ -3824,7 +3826,7 @@ function getEmployedVlans ($object_id, $domain_vlanlist)
 	{
 		$seen_nets = array();
 		foreach ($cell[$family] as $ip_bin => $allocation)
-			if ($net_id = getIPAddressNetworkId ($ip_bin))
+			if ($net_id = getIPAddressNetworkId ($ip_bin,$vrf_id))
 			{
 				if (! isset($seen_nets[$net_id]))
 					$seen_nets[$net_id]	= 1;
@@ -4830,7 +4832,7 @@ function buildSearchRedirectURL ($result_type, $record)
 		case 'ipv4addressbydescr':
 		case 'ipv6addressbydescr':
 			$next_page = strlen ($record['ip']) == 16 ? 'ipv6net' : 'ipv4net';
-			$id = isset ($record['net_id']) ? $record['net_id'] : getIPAddressNetworkId ($record['ip']);
+			$id = isset ($record['net_id']) ? $record['net_id'] : getIPAddressNetworkId ($record['ip'],$record['vrf_id']);
 			$params['hl_ip'] = ip_format ($record['ip']);
 			break;
 		case 'object':

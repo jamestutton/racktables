@@ -23,8 +23,26 @@ ADD PRIMARY KEY (  `object_id` ,  `ip` ,  `vrf_id` );
 ALTER TABLE  `IPv4Allocation` DROP INDEX  `ip` ,
 ADD INDEX  `ip` (  `ip` ,  `vrf_id` );
 
-
 ALTER TABLE  `IPv4Log` ADD  `vrf_id` INT( 10 ) UNSIGNED NOT NULL DEFAULT  '1';
 ALTER TABLE  `IPv4Log` DROP INDEX  `ip-date` ,
 ADD INDEX  `ip-date` (  `ip` ,  `date` ,  `vrf_id` )
 
+
+
+ALTER TABLE  `IPv6Network` ADD  `vrf_id` INT( 10 ) UNSIGNED NOT NULL DEFAULT  '1';
+ALTER TABLE  `IPv6Network` DROP INDEX  `ip` ,
+ADD UNIQUE  `ip` (  `ip` ,  `mask` ,  `vrf_id` );
+
+ALTER TABLE  `IPv6Address` ADD  `vrf_id` INT( 10 ) UNSIGNED NOT NULL DEFAULT  '1';
+ALTER TABLE  `IPv6Address` DROP PRIMARY KEY ,
+ADD PRIMARY KEY (  `ip` ,  `vrf_id` );
+
+ALTER TABLE  `IPv6Allocation` ADD  `vrf_id` INT( 10 ) UNSIGNED NOT NULL DEFAULT  '1';
+ALTER TABLE  `IPv6Allocation` DROP PRIMARY KEY ,
+ADD PRIMARY KEY (  `object_id` ,  `ip` ,  `vrf_id` );
+ALTER TABLE  `IPv6Allocation` DROP INDEX  `ip` ,
+ADD INDEX  `ip` (  `ip` ,  `vrf_id` );
+
+ALTER TABLE  `IPv6Log` ADD  `vrf_id` INT( 10 ) UNSIGNED NOT NULL DEFAULT  '1';
+ALTER TABLE  `IPv6Log` DROP INDEX  `ip-date` ,
+ADD INDEX  `ip-date` (  `ip` ,  `date` ,  `vrf_id` );

@@ -885,7 +885,7 @@ function updIPAllocation ()
 	assertStringArg ('bond_name', TRUE);
 	genericAssertion ('bond_type', 'enum/alloc_type');
 	assertUIntArg ('bond_vrf');
-	updateIPBond ($ip_bin, $_REQUEST['object_id'], $_REQUEST['bond_name'], $_REQUEST['bond_type'], $_REQUEST['bond_vrf']);
+	updateIPBond ($ip_bin, $_REQUEST['bond_vrf'], $_REQUEST['object_id'], $_REQUEST['bond_name'], $_REQUEST['bond_type']);
 	showFuncMessage (__FUNCTION__, 'OK');
 	return buildRedirectURL (NULL, NULL, array ('hl_ip' => ip_format ($ip_bin)));
 }
@@ -896,7 +896,7 @@ function delIPAllocation ()
 	$ip_bin = assertIPArg ('ip');
 	assertUIntArg ('object_id');
 
-	unbindIPFromObject ($ip_bin, $_REQUEST['object_id']);
+	unbindIPFromObject ($ip_bin, $_REQUEST['bond_vrf'], $_REQUEST['object_id']);
 	return showFuncMessage (__FUNCTION__, 'OK');
 }
 
@@ -909,10 +909,10 @@ function addIPAllocation ()
 	assertStringArg ('bond_name', TRUE);
 	genericAssertion ('bond_type', 'enum/alloc_type');
 
-	if  (getConfigVar ('IPV4_JAYWALK') != 'yes' and NULL === getIPAddressNetworkId ($ip_bin))
+	if  (getConfigVar ('IPV4_JAYWALK') != 'yes' and NULL === getIPAddressNetworkId ($ip_bin,$vrf_id))
 		return showFuncMessage (__FUNCTION__, 'ERR1', array (ip_format ($ip_bin)));
 
-	bindIPToObject ($ip_bin, $_REQUEST['object_id'], $_REQUEST['bond_name'], $_REQUEST['bond_type'], $_REQUEST['bond_vrf']);
+	bindIPToObject ($ip_bin, $_REQUEST['bond_vrf'], $_REQUEST['object_id'], $_REQUEST['bond_name'], $_REQUEST['bond_type']);
 	
 	showFuncMessage (__FUNCTION__, 'OK');
 	return buildRedirectURL (NULL, NULL, array ('hl_ip' => ip_format ($ip_bin)));
@@ -985,7 +985,7 @@ function editAddress ()
 	assertStringArg ('name', TRUE);
 	assertStringArg ('comment', TRUE);
 	$ip_bin = assertIPArg ('ip');
-	updateAddress ($ip_bin, $_REQUEST['name'], isCheckSet ('reserved', 'yesno'), $_REQUEST['comment']);
+	updateAddress ($ip_bin, $_REQUEST['bond_vrf'], $_REQUEST['name'], isCheckSet ('reserved', 'yesno'), $_REQUEST['comment']);
 	return showFuncMessage (__FUNCTION__, 'OK');
 }
 

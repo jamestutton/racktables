@@ -171,10 +171,12 @@ function getRenderedAlloc ($object_id, $alloc)
 		'td_ip' => '',
 		'td_network' => '',
 		'td_routed_by' => '',
+		'td_vrf' => '',
 		'td_peers' => '',
 	);
 	$dottedquad = $alloc['addrinfo']['ip'];
 	$ip_bin = $alloc['addrinfo']['ip_bin'];
+	$vrf_id = $alloc['vrf_id'];
 
 	$hl_ip_bin = NULL;
 	if (isset ($_REQUEST['hl_ip']))
@@ -204,7 +206,7 @@ function getRenderedAlloc ($object_id, $alloc)
 
 	// render IP address td
 	global $aac;
-	$netinfo = spotNetworkByIP ($ip_bin);
+	$netinfo = spotNetworkByIP ($ip_bin,$vrf_id);
 	$ret['td_ip'] = "<td class='tdleft'>";
 	if (isset ($netinfo))
 	{
@@ -218,6 +220,7 @@ function getRenderedAlloc ($object_id, $alloc)
 					'page' => 'ipaddress',
 					'hl_object_id' => $object_id,
 					'ip' => $dottedquad,
+					'vrf_id' => $alloc['vrf_id'],
 				)
 			) . "'>$title</a>";
 	}
@@ -228,6 +231,9 @@ function getRenderedAlloc ($object_id, $alloc)
 		$ret['td_ip'] .= ' (' . niftyString ($alloc['addrinfo']['name']) . ')';
 	$ret['td_ip'] .= '</td>';
 
+	
+	
+	
 	// render network and routed_by tds
 	$td_class = 'tdleft';
 	if (! isset ($netinfo))
@@ -252,6 +258,13 @@ function getRenderedAlloc ($object_id, $alloc)
 			$ret['td_routed_by'] = "<td class='$td_class'>&nbsp;</td>";
 	}
 
+	// render vrf td
+	$td_class = 'tdleft';
+	
+	$ret['td_vrf'] = "<td class='$td_class'>" . $alloc['vrf'] .'</td>';
+	
+	
+	
 	// render peers td
 	$ret['td_peers'] = "<td class='$td_class'>";
 	$prefix = '';
@@ -1212,9 +1225,9 @@ function renderObject ($object_id)
 		startPortlet ('IP addresses');
 		echo "<table cellspacing=0 cellpadding='5' align='center' class='widetable'>\n";
 		if (getConfigVar ('EXT_IPV4_VIEW') == 'yes')
-			echo "<tr><th>OS interface</th><th>IP address</th><th>network</th><th>routed by</th><th>peers</th></tr>\n";
+			echo "<tr><th>OS interface</th><th>IP address</th><th>network</th><th>routed by</th><th>vrf</th><th>peers</th></tr>\n";
 		else
-			echo "<tr><th>OS interface</th><th>IP address</th><th>peers</th></tr>\n";
+			echo "<tr><th>OS interface</th><th>IP address</th><th>vrf</th><th>peers</th></tr>\n";
 
 		// group IP allocations by interface name instead of address family
 		$allocs_by_iface = array();
@@ -1244,6 +1257,7 @@ function renderObject ($object_id)
 					echo $rendered_alloc['td_network'];
 					echo $rendered_alloc['td_routed_by'];
 				}
+				echo $rendered_alloc['td_vrf'];
 				echo $rendered_alloc['td_peers'];
 
 				echo "</tr>\n";
@@ -1553,7 +1567,7 @@ function renderIPForObject ($object_id)
 		//Add A VRF Dropdown to the IP Form
 		echo '<td>';
 		echo '<label>' . '' . ' ';
-		printSelect (getExistingVRFOptions (0), array ('name' => 'bond_vrf'), $default_vrf_id);
+		printSelect (getExistingVRFOptions (), array ('name' => 'bond_vrf'), $default_vrf_id);
 		echo '</label>';
 		echo '</td>';
 		
@@ -1615,7 +1629,7 @@ function renderIPForObject ($object_id)
 		//Add A VRF Dropdown to the IP Form
 		$alloc_list .=  '<td>';
 		$alloc_list .=  '<label>' . '' . ' ';
-		$alloc_list .=  getSelect (getExistingVRFOptions (0), array ('name' => 'bond_vrf'), $alloc['vrf_id']);
+		$alloc_list .=  getSelect (getExistingVRFOptions (), array ('name' => 'bond_vrf'), $alloc['vrf_id']);
 		$alloc_list .=  '</label>';
 		$alloc_list .=  '</td>';
 		
@@ -2433,7 +2447,7 @@ function getRenderedIPNetBacktrace ($range)
 	$backtrace = array();
 	$backtrace['&rarr;'] = $range;
 	$key = '';
-	while (NULL !== ($upperid = getIPAddressNetworkId ($range['ip_bin'], $clen)))
+	while (NULL !== ($upperid = getIPAddressNetworkId ($range['ip_bin'],$range['vrf_id'], $clen)))
 	{
 		$upperinfo = spotEntity ($range['realm'], $upperid);
 		$clen = $upperinfo['mask'];
@@ -2511,13 +2525,13 @@ function renderIPNetwork ($id)
 }
 
 // Used solely by renderSeparator
-function renderEmptyIPv6 ($ip_bin, $hl_ip)
+function renderEmptyIPv6 ($ip_bin,$vrf_id, $hl_ip)
 {
 	$class = 'tdleft';
 	if ($ip_bin === $hl_ip)
 		$class .= ' highlight';
 	$fmt = ip6_format ($ip_bin);
-	echo "<tr class='$class'><td><a class='ancor' name='ip-$fmt' href='" . makeHref (array ('page' => 'ipaddress', 'ip' => $fmt)) . "'>" . $fmt;
+	echo "<tr class='$class'><td><a class='ancor' name='ip-$fmt' href='" . makeHref (array ('page' => 'ipaddress', 'ip' => $fmt, 'vrf_id' => $vrf_id)) . "'>" . $fmt;
 	$editable = permitted ('ipaddress', 'properties', 'editAddress')
 		? 'editable'
 		: '';
@@ -2615,7 +2629,7 @@ function renderIPv4NetworkAddresses ($range)
 			$addr = $range['addrlist'][$ip_bin];
 		else
 		{
-			echo "<tr class='tdleft $tr_class'><td class=tdleft><a class='ancor' name='ip-$dottedquad' href='" . makeHref(array('page'=>'ipaddress', 'ip' => $dottedquad)) . "'>$dottedquad</a></td>";
+			echo "<tr class='tdleft $tr_class'><td class=tdleft><a class='ancor' name='ip-$dottedquad' href='" . makeHref(array('page'=>'ipaddress', 'ip' => $dottedquad,'vrf_id' => $range['vrf_id'])) . "'>$dottedquad</a></td>";
 			$editable = permitted ('ipaddress', 'properties', 'editAddress')
 				? 'editable'
 				: '';
@@ -2633,7 +2647,7 @@ function renderIPv4NetworkAddresses ($range)
 		}
 		$tr_class .= ' ' . $addr['class'];
 		echo "<tr class='tdleft $tr_class'>";
-		echo "<td><a class='ancor $history_class' $title name='ip-$dottedquad' href='".makeHref(array('page'=>'ipaddress', 'ip'=>$addr['ip']))."'>${addr['ip']}</a></td>";
+		echo "<td><a class='ancor $history_class' $title name='ip-$dottedquad' href='".makeHref(array('page'=>'ipaddress', 'ip'=>$addr['ip'], 'vrf_id'=>$addr['vrf_id']))."'>${addr['ip']}</a></td>";
 		$editable =
 			(empty ($addr['allocs']) || !empty ($addr['name']) || !empty ($addr['comment']))
 			&& permitted ('ipaddress', 'properties', 'editAddress')
@@ -2747,7 +2761,7 @@ function renderIPv6NetworkAddresses ($netinfo)
 
 		$tr_class = $addr['class'] . ' tdleft' . ($hl_ip === $ip_bin ? ' highlight' : '');
 		echo "<tr class='$tr_class'>";
-		echo "<td><a class='ancor $history_class' $title name='ip-${addr['ip']}' href='" . makeHref (array ('page' => 'ipaddress', 'ip' => $addr['ip'])) . "'>${addr['ip']}</a></td>";
+		echo "<td><a class='ancor $history_class' $title name='ip-${addr['ip']}' href='" . makeHref (array ('page' => 'ipaddress', 'ip' => $addr['ip'],'vrf_id' => $addr['vrf_id'])) . "'>${addr['ip']}</a></td>";
 		$editable =
 			(empty ($addr['allocs']) || !empty ($addr['name'])
 			&& permitted ('ipaddress', 'properties', 'editAddress')
@@ -2764,7 +2778,7 @@ function renderIPv6NetworkAddresses ($netinfo)
 		foreach ($addr['allocs'] as $ref)
 		{
 			echo $delim . $aac2[$ref['type']];
-			echo "<a href='".makeHref(array('page'=>'object', 'object_id'=>$ref['object_id'], 'tab' => 'default', 'hl_ip'=>$addr['ip']))."'>";
+			echo "<a href='".makeHref(array('page'=>'object', 'object_id'=>$ref['object_id'], 'tab' => 'default', 'hl_ip'=>$addr['ip'],'vrf_id' => $addr['vrf_id']))."'>";
 			echo $ref['name'] . (!strlen ($ref['name']) ? '' : '@');
 			echo "${ref['object_name']}</a>";
 			$delim = '; ';
@@ -2874,7 +2888,7 @@ function renderIPAddress ($ip_bin)
 	{
 		startPortlet ('allocations');
 		echo "<table class='widetable' cellpadding=5 cellspacing=0 border=0 align='center' width='100%'>\n";
-		echo "<tr><th>object</th><th>OS interface</th><th>allocation type</th></tr>\n";
+		echo "<tr><th>object</th><th>OS interface</th><th>allocation type</th><th>vrf</th></tr>\n";
 		// render all allocation records for this address the same way
 		foreach ($address['allocs'] as $bond)
 		{
@@ -2885,6 +2899,7 @@ function renderIPAddress ($ip_bin)
 				"<td><a href='" . makeHref (array ('page' => 'object', 'object_id' => $bond['object_id'], 'tab' => 'default', 'hl_ip' => $address['ip'])) . "'>${bond['object_name']}</td>" .
 				"<td>${bond['name']}</td>" .
 				"<td><strong>" . $aat[$bond['type']] . "</strong></td>" .
+				"<td><strong>" . $bond['vrf'] . "</strong></td>" .
 				"</tr>\n";
 		}
 		echo "</table><br><br>";
@@ -2959,7 +2974,16 @@ function renderIPAddressAllocations ($ip_bin)
 		printSelect (getNarrowObjectList ('IPV4OBJ_LISTSRC'), array ('name' => 'object_id', 'tabindex' => 100));
 		echo "</td><td><input type=text tabindex=101 name=bond_name size=10></td><td>";
 		printSelect ($aat, array ('name' => 'bond_type', 'tabindex' => 102, 'regular'));
-		echo "</td><td>";
+		echo "</td>";
+		
+		//Add A VRF Dropdown to the IP Allocation Form
+		echo  '<td>';
+		echo '<label>' . '' . ' ';
+		printSelect (getExistingVRFOptions (), array ('name' => 'bond_vrf'), 1);
+		echo '</label>';
+		echo '</td>';
+		
+		echo "<td>";
 		printImageHREF ('add', 'allocate', TRUE, 103);
 		echo "</td></form></tr>";
 	}
@@ -2968,7 +2992,7 @@ function renderIPAddressAllocations ($ip_bin)
 	$address = getIPAddress ($ip_bin);
 	echo "<center><h1>${address['ip']}</h1></center>\n";
 	echo "<table class='widetable' cellpadding=5 cellspacing=0 border=0 align='center'>\n";
-	echo "<tr><th>&nbsp;</th><th>object</th><th>OS interface</th><th>allocation type</th><th>&nbsp;</th></tr>\n";
+	echo "<tr><th>&nbsp;</th><th>object</th><th>OS interface</th><th>allocation type</th><th>vrf</th><th>&nbsp;</th></tr>\n";
 
 	if (getConfigVar ('ADDNEW_AT_TOP') == 'yes')
 		printNewItemTR();
@@ -2996,7 +3020,15 @@ function renderIPAddressAllocations ($ip_bin)
 			echo "<td><a href='" . makeHref (array ('page' => 'object', 'object_id' => $bond['object_id'], 'hl_ip' => $address['ip'])) . "'>${bond['object_name']}</td>";
 			echo "<td><input type='text' name='bond_name' value='${bond['name']}' size=10></td><td>";
 			printSelect ($aat, array ('name' => 'bond_type'), $bond['type']);
-			echo "</td><td>";
+			echo "</td>"; 
+			
+			//Add A VRF Dropdown to the IP Allocation Form
+			echo  '<td>';
+			echo '<label>' . '' . ' ';
+			printSelect (getExistingVRFOptions (), array ('name' => 'bond_vrf'), $bond['vrf_id']);
+			echo '</label>';
+			echo '</td>';
+			echo "<td>";
 			printImageHREF ('save', 'Save changes', TRUE);
 			echo "</td></form></tr>\n";
 		}
@@ -3388,7 +3420,7 @@ function renderSearchResults ($terms, $summary)
 					{
 						echo "<tr class=row_${order}><td class=tdleft>";
 						$fmt = ip_format ($addr['ip']);
-						$parentnet = getIPAddressNetworkId ($addr['ip']);
+						$parentnet = getIPAddressNetworkId ($addr['ip'],$addr['vrf_id']);
 						if ($parentnet !== NULL)
 							echo "<a href='" . makeHref (array (
 									'page' => strlen ($addr['ip']) == 16 ? 'ipv6net' : 'ipv4net',
@@ -3397,7 +3429,7 @@ function renderSearchResults ($terms, $summary)
 									'hl_ip' => $fmt,
 								)) . "'>${fmt}</a></td>";
 						else
-							echo "<a href='index.php?page=ipaddress&tab=default&ip=${fmt}'>${fmt}</a></td>";
+							echo "<a href='index.php?page=ipaddress&tab=default&ip=${fmt}&vrf_id=". $addr['vrf_id']. "'>${fmt}</a></td>";
 						echo "<td class=tdleft>${addr['name']}</td></tr>";
 						$order = $nextorder[$order];
 					}
@@ -6125,7 +6157,7 @@ function dynamic_title_decoder ($path_position)
 			'params' => array ('file_id' => $_REQUEST['file_id'])
 		);
 	case 'ipaddress':
-		$address = getIPAddress (ip_parse ($_REQUEST['ip']));
+		$address = getIPAddress (ip_parse ($_REQUEST['ip']),$_REQUEST['vrf_id']);
 		return array
 		(
 			'name' => niftyString ($address['ip'] . ($address['name'] != '' ? ' (' . $address['name'] . ')' : ''), 50, FALSE),
@@ -6137,7 +6169,7 @@ function dynamic_title_decoder ($path_position)
         switch ($pageno)
 		{
 			case 'ipaddress':
-				$net = spotNetworkByIP (ip_parse ($_REQUEST['ip']));
+				$net = spotNetworkByIP (ip_parse ($_REQUEST['ip']),$_REQUEST['vrf_id']);
 				$ret = array
 				(
 					'name' => $net['ip'] . '/' . $net['mask'],
@@ -6164,7 +6196,7 @@ function dynamic_title_decoder ($path_position)
         switch ($pageno)
 		{
 			case 'ipaddress':
-				$net_id = getIPAddressNetworkId (ip_parse ($_REQUEST['ip']));
+				$net_id = getIPAddressNetworkId (ip_parse ($_REQUEST['ip']),$_REQUEST['vrf_id']);
 				break;
 			case 'ipv4net':
 			case 'ipv6net':
