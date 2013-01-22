@@ -2464,7 +2464,7 @@ function nodeIsCollapsed ($node)
 // 'addrc' and 'own_addrc' are sizes of 'addrlist' and 'own_addrlist', respectively
 function loadIPAddrList (&$node)
 {
-	$node['addrlist'] = scanIPSpace (array (array ('first' => $node['ip_bin'], 'last' => ip_last ($node))));
+	$node['addrlist'] = scanIPSpace (array (array ('first' => $node['ip_bin'], 'last' => ip_last ($node),'vrf_id' => $node['vrf_id'])));
 
 	if (! isset ($node['id']))
 		$node['own_addrlist'] = $node['addrlist'];

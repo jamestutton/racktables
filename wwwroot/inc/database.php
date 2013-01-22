@@ -59,6 +59,9 @@ $SQLSchema = array
 			'mask' => 'mask',
 			'name' => 'name',
 			'comment' => 'comment',
+			'vrf_id' => 'vrf_id',
+			'vrf' => '(SELECT name FROM VRF where id = vrf_id)',
+			'vrf_comment' => '(SELECT comment FROM VRF where id = vrf_id)',
 			'8021q' => '(SELECT GROUP_CONCAT(CONCAT(domain_id, "-", vlan_id) ORDER BY domain_id, vlan_id) FROM VLANIPv4 WHERE ipv4net_id = id)',
 		),
 		'keycolumn' => 'id',
@@ -74,6 +77,9 @@ $SQLSchema = array
 			'mask' => 'mask',
 			'name' => 'name',
 			'comment' => 'comment',
+			'vrf_id' => 'vrf_id',
+			'vrf' => '(SELECT name FROM VRF where id = vrf_id)',
+			'vrf_comment' => '(SELECT comment FROM VRF where id = vrf_id)',
 			'8021q' => '(SELECT GROUP_CONCAT(CONCAT(domain_id, "-", vlan_id) ORDER BY domain_id, vlan_id) FROM VLANIPv6 WHERE ipv6net_id = id)',
 		),
 		'keycolumn' => 'id',
@@ -614,6 +620,8 @@ WHERE
 	n1.id = ?
 	AND n2.ip BETWEEN n1.ip AND (n1.ip + (1 << (32 - n1.mask)) - 1)
 	AND n2.mask >= n1.mask
+	AND n2.vrf_id = n1.vrf_id
+	AND n2.vrf_id = n1.vrf_id
 ORDER BY n2.ip, n2.mask
 ", array ($id));
 		$nets = $result->fetchAll (PDO::FETCH_ASSOC);
@@ -641,6 +649,7 @@ WHERE
 	n1.id = ?
 	AND n2.ip BETWEEN n1.ip AND n1.last_ip
 	AND n2.mask >= n1.mask
+	AND n2.vrf_id = n1.vrf_id
 ORDER BY n2.ip, n2.mask
 ", array ($id));
 		$nets = $result->fetchAll (PDO::FETCH_ASSOC);
@@ -1899,18 +1908,20 @@ function scanIPv4Space ($pairlist)
 	$qparams_bin = array();
 	foreach ($pairlist as $tmp)
 	{
-		$whereexpr1 .= $or . "ip between ? and ?";
-		$whereexpr2 .= $or . "ip between ? and ?";
-		$whereexpr3 .= $or . "vip between ? and ?";
-		$whereexpr4 .= $or . "rsip between ? and ?";
-		$whereexpr5a .= $or . "remoteip between ? and ?";
-		$whereexpr5b .= $or . "localip between ? and ?";
-		$whereexpr6 .= $or . "l.ip between ? and ?";
+		$whereexpr1 .= $or . "ip between ? and ? and vrf_id = ?";
+		$whereexpr2 .= $or . "ip between ? and ? and vrf_id = ?";
+		$whereexpr3 .= $or . "vip between ? and ? AND vs_vrf_id = ?";
+		$whereexpr4 .= $or . "rsip between ? and ?  AND rs_vrf_id = ?";
+		$whereexpr5a .= $or . "remoteip between ? and ? AND remote_vrf_id = ?";
+		$whereexpr5b .= $or . "localip between ? and ? AND local_vrf_id = ?";
+		$whereexpr6 .= $or . "l.ip between ? and ? AND vrf_id = ?";
 		$or = ' or ';
 		$qparams[] = ip4_bin2db ($tmp['first']);
 		$qparams[] = ip4_bin2db ($tmp['last']);
+		$qparams[] = $tmp['vrf_id'];
 		$qparams_bin[] = $tmp['first'];
 		$qparams_bin[] = $tmp['last'];
+		$qparams_bin[] = $tmp['vrf_id'];
 	}
 	$whereexpr1 .= ')';
 	$whereexpr2 .= ')';
@@ -2085,14 +2096,15 @@ function scanIPv6Space ($pairlist)
 	$qparams = array();
 	foreach ($pairlist as $tmp)
 	{
-		$whereexpr1 .= $or . "ip between ? and ?";
-		$whereexpr2 .= $or . "ip between ? and ?";
-		$whereexpr3 .= $or . "vip between ? and ?";
-		$whereexpr4 .= $or . "rsip between ? and ?";
-		$whereexpr6 .= $or . "l.ip between ? and ?";
+		$whereexpr1 .= $or . "ip between ? and ? AND vrf_id = ?";
+		$whereexpr2 .= $or . "ip between ? and ? AND vrf_id = ?";
+		$whereexpr3 .= $or . "vip between ? and ? AND vs_vrf_id = ?";
+		$whereexpr4 .= $or . "rsip between ? and ? AND rs_vrf_id = ?";
+		$whereexpr6 .= $or . "l.ip between ? and ? AND vrf_id = ?";
 		$or = ' or ';
 		$qparams[] = $tmp['first'];
 		$qparams[] = $tmp['last'];
+		$qparams[] = $tmp['vrf_id'];
 	}
 	$whereexpr1 .= ')';
 	$whereexpr2 .= ')';

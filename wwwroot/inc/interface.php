@@ -2295,29 +2295,57 @@ function renderIPSpace()
 {
 	global $pageno, $tabno;
 	$realm = ($pageno == 'ipv4space' ? 'ipv4net' : 'ipv6net');
+	
+	// Get VRF id or if not set show VRF 1 Global
+	$vrf_id = isset ($_REQUEST['vrf_id']) ? $_REQUEST['vrf_id'] : 1;
+
 	$cellfilter = getCellFilter();
 	$top = NULL;
 	$netlist = array();
 	foreach (listCells ($realm) as $net)
 	{
-		if (isset ($top) and IPNetContains ($top, $net))
-			;
-		elseif (! count ($cellfilter['expression']) or judgeCell ($net, $cellfilter['expression']))
-			$top = $net;
-		else
-			continue;
-		$netlist[$net['id']] = $net;
+		//Check Network within correct VRF
+		if ($net['vrf_id'] == $vrf_id) {
+			if (isset ($top) and IPNetContains ($top, $net))
+				;
+			elseif (! count ($cellfilter['expression']) or judgeCell ($net, $cellfilter['expression']))
+				$top = $net;
+			else
+				continue;
+			$netlist[$net['id']] = $net;
+		}
+		
 	}
 	$netcount = count ($netlist);
 	// expand request can take either natural values or "ALL". Zero means no expanding.
 	$eid = isset ($_REQUEST['eid']) ? $_REQUEST['eid'] : 0;
+	
+
 	$tree = prepareIPTree ($netlist, $eid);
 
 	echo "<table border=0 class=objectview>\n";
 	echo "<tr><td class=pcleft>";
 	if (! renderEmptyResults($cellfilter, 'IP nets', count($tree)))
 	{
-		startPortlet ("networks (${netcount})");
+		//Add A VRF Dropdown 
+		
+		echo '<form method=GET ><strong>VRF:</strong>';
+		printSelect (getExistingVRFOptions (), array ('name' => 'vrf_id', 'onchange' => 'this.form.submit()'), $vrf_id);
+		echo "<input type=hidden name=page value=${pageno}>\n";
+		echo "<input type=hidden name=tab value=${tabno}>\n";
+		echo "<input type=hidden name='cft[]' value=''>\n";
+		echo "<input type=hidden name='cfp[]' value=''>\n";
+		echo "<input type=hidden name='nft[]' value=''>\n";
+		echo "<input type=hidden name='nfp[]' value=''>\n";
+		echo "<input type=hidden name='cfe' value=''>\n";
+		foreach ($bypass_params as $bypass_name => $bypass_value)
+		echo '<input type=hidden name="' . htmlspecialchars ($bypass_name, ENT_QUOTES) . '" value="' . htmlspecialchars ($bypass_value, ENT_QUOTES) . '">' . "\n";
+		echo '</form>';
+		
+	startPortlet ("VRF ${vrf} networks (${netcount})");
+		
+
+		
 		echo '<h4>';
 		$all = "<a href='".makeHref(array('page'=>$pageno, 'tab'=>$tabno, 'eid'=>'ALL')) .
 				$cellfilter['urlextra'] . "'>expand&nbsp;all</a>";
@@ -2476,8 +2504,10 @@ function renderIPNetwork ($id)
 	$range = spotEntity ($realm, $id);
 	loadIPAddrList ($range);
 	echo "<table border=0 class=objectview cellspacing=0 cellpadding=0>";
-	echo "<tr><td colspan=2 align=center><h1>${range['ip']}/${range['mask']}</h1><h2>";
-	echo htmlspecialchars ($range['name'], ENT_QUOTES, 'UTF-8') . "</h2></td></tr>\n";
+	echo "<tr><td colspan=2 align=center>";
+	echo "<h1>${range['ip']}/${range['mask']}</h1>";
+	echo "<h2>VRF: ${range['vrf']}</h2>";
+	echo "<h2>" . htmlspecialchars ($range['name'], ENT_QUOTES, 'UTF-8') . "</h2></td></tr>\n";
 
 	echo "<tr><td class=pcleft width='50%'>";
 
@@ -2491,7 +2521,7 @@ function renderIPNetwork ($id)
 		$summary[] = array ('Netmask:', "0x" . strtoupper (implode ('', unpack ('H*', $range['mask_bin']))));
 		$summary['Wildcard bits'] = ip4_format ( ~ $range['mask_bin']);
 	}
-
+	$summary['VRF'] = $range['vrf'];
 	$reuse_domain = considerConfiguredConstraint ($range, '8021Q_MULTILINK_LISTSRC');
 	$domainclass = array();
 	foreach (array_count_values (reduceSubarraysToColumn ($range['8021q'], 'domain_id')) as $domain_id => $vlan_count)
@@ -5808,12 +5838,14 @@ function renderCell ($cell)
 		break;
 	case 'ipv4net':
 	case 'ipv6net':
-		echo "<table class='slbcell vscell'><tr><td rowspan=3 width='5%'>";
+		echo "<table class='slbcell vscell'><tr><td rowspan=4 width='5%'>";
 		printImageHREF ('NET');
 		echo '</td><td>' . mkA ("${cell['ip']}/${cell['mask']}", $cell['realm'], $cell['id']);
 		echo getRenderedIPNetCapacity ($cell);
 		echo '</td></tr>';
-
+		echo "<tr><td>";
+		echo "VRF:${cell['vrf']}";
+		echo "</td></tr>";
 		echo "<tr><td>";
 		if (strlen ($cell['name']))
 			echo "<strong>" . niftyString ($cell['name']) . "</strong>";
